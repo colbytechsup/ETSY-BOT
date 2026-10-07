@@ -33,4 +33,4 @@ Collect real signals for the niches in `etsybot/data/niches.py`, then rank them.
 - API response shapes are my understanding and untested against the live services. Verify.
 - Google Trends uses the unofficial `pytrends` package (may break or rate-limit).
 - Scores are relative proxies (favorites, views, listing counts), not sales. They are a shortlist, not a forecast.
-- Niches marked `ip_risk=high` (gaming, UFC, football, meme) need original, unlicensed designs.
+- Niches marked `ip_risk=high` (UFC, meme) need original, unlicensed designs.
