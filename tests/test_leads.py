@@ -1,0 +1,149 @@
+import json
+from email.message import EmailMessage
+
+from leads import fetch, outreach
+from leads.__main__ import ingest_raw, main
+from leads.parser import Lead, parse_bytes, parse_subject
+from leads.pipeline import Pipeline
+from leads.sinks import WebhookSink
+
+
+def make(sender, subject, text=None, html=None, msgid="<a@b>"):
+    m = EmailMessage()
+    m["From"], m["Subject"], m["Message-ID"], m["Date"] = sender, subject, msgid, "Mon, 1 Jan 2026 10:00:00 +0000"
+    if html and text:
+        m.set_content(text)
+        m.add_alternative(html, subtype="html")
+    elif html:
+        m.set_content(html, subtype="html")
+    else:
+        m.set_content(text or "")
+    return m.as_bytes()
+
+
+INDEED_HTML = """<html><body><div style="x">New candidate</div>
+<table><tr><td><b>Candidate name</b>:</td><td>Jane Driver</td></tr>
+<tr><td>Email:</td><td><a href="mailto:jane.driver@gmail.com">jane.driver@gmail.com</a></td></tr>
+<tr><td>Phone:</td><td>(555) 123-4567</td></tr>
+<tr><td>Location:</td><td>Houston, TX</td></tr></table>
+<p>Questions? Contact support@indeed.com or <a href="x">unsubscribe</a>.</p>
+<script>var tracking = 'noreply@indeed.com';</script></body></html>"""
+
+
+def test_indeed_style_html_email():
+    raw = make("Indeed <donotreply@indeed.com>", "Jane Driver applied to CDL Driver - Hazmat", html=INDEED_HTML)
+    lead = parse_bytes(raw)
+    assert lead.name == "Jane Driver"
+    assert lead.email == "jane.driver@gmail.com"
+    assert lead.phone == "(555) 123-4567"
+    assert lead.location == "Houston, TX"
+    assert lead.job_title == "CDL Driver - Hazmat"
+    assert lead.source == "indeed"
+    assert lead.dedup_key() == "email:jane.driver@gmail.com"
+
+
+def test_plain_text_form_email_and_prefers_candidate_over_platform_address():
+    text = ("You have a new application.\n\nName: Bob Smith\nPhone number: 555.987.6543\n"
+            "Applied for: Owner Operator\nReply to: 7f3k2@relay.indeedemail.com\n"
+            "Do not reply to noreply@indeed.com")
+    lead = parse_bytes(make("Indeed Apply <noreply@indeed.com>", "New candidate: Bob Smith", text=text))
+    assert (lead.name, lead.phone, lead.job_title) == ("Bob Smith", "555.987.6543", "Owner Operator")
+    assert lead.email == "7f3k2@relay.indeedemail.com"  # relay subdomain is the way to reach them
+
+
+def test_direct_email_uses_sender_and_own_domain_is_ignored():
+    text = "Hey, saw your ad. Do you train for hazmat? Call me 555-222-3333.\n-- Sam\ninfo@phtruckingpros.com"
+    lead = parse_bytes(make("Sam Jones <sam@example.com>", "Question about training", text=text),
+                       own_domains=["phtruckingpros.com"])
+    assert lead.source == "email"
+    assert lead.email == "sam@example.com"
+    assert lead.name == "Sam Jones"
+    assert lead.phone == "555-222-3333"
+    assert lead.job_title == ""
+
+
+def test_subject_patterns():
+    assert parse_subject("Re: FW: New application for Local Driver: Ann Lee") == ("Ann Lee", "Local Driver")
+    assert parse_subject("Carlos Ruiz has applied for Tanker Driver") == ("Carlos Ruiz", "Tanker Driver")
+    assert parse_subject("Kim Park is interested in Class A Driver") == ("Kim Park", "Class A Driver")
+    assert parse_subject("Weekly digest") == ("", "")
+    assert parse_subject("New candidate: 12345 applied to X") == ("", "X")  # not a name
+
+
+def test_phone_does_not_match_long_ids():
+    lead = parse_bytes(make("a@example.com", "x", text="Application ID 123456789012345\nCell - 555 444 1212"))
+    assert lead.phone == "555 444 1212"
+
+
+def test_pipeline_dedup_status_and_csv(tmp_path):
+    pipe = Pipeline(str(tmp_path / "l.db"))
+    a = Lead(name="Jane", email="Jane@x.com", phone="1")
+    assert pipe.add(a) == 1
+    assert pipe.add(Lead(name="Jane D", email="jane@x.com")) is None  # same email, case-insensitive
+    assert pipe.add(Lead(name="Anon", phone="(555) 000-1111")) == 2
+    assert pipe.add(Lead(name="Anon2", phone="555-000-1111")) is None  # same digits
+    pipe.set_status([1], "contacted", note="left voicemail")
+    assert pipe.get(1)["status"] == "contacted" and pipe.get(1)["notes"] == "left voicemail"
+    assert [r["id"] for r in pipe.all("new")] == [2]
+    out = tmp_path / "o.csv"
+    assert pipe.export_csv(str(out)) == 2
+    assert "jane@x.com" not in out.read_text() and "Jane@x.com" in out.read_text()
+
+
+def test_webhook_sink_posts_lead_fields():
+    calls = []
+    sink = WebhookSink("https://hooks.example/abc", headers={"X-Key": "k"},
+                       post=lambda url, payload, headers: calls.append((url, payload, headers)) or 200)
+    assert sink.send({"id": 1, "name": "J", "email": "j@x", "dedup_key": "e", "added": 1.0, "campaign": "certrig_hazmat"}) == 200
+    url, payload, headers = calls[0]
+    assert url == "https://hooks.example/abc" and headers == {"X-Key": "k"}
+    assert payload == {"id": 1, "name": "J", "email": "j@x", "campaign": "certrig_hazmat"}
+    json.dumps(payload)
+
+
+class FakeImap:
+    def __init__(self, msgs):
+        self.msgs, self.flagged = msgs, []
+
+    def search(self, charset, crit):
+        return "OK", [b" ".join(str(i).encode() for i in range(len(self.msgs)))]
+
+    def fetch(self, num, what):
+        assert "PEEK" in what
+        return "OK", [(b"hdr", self.msgs[int(num)]), b")"]
+
+    def store(self, num, op, flag):
+        self.flagged.append((num, flag))
+
+
+def test_imap_pull_ingests_and_marks_seen(tmp_path):
+    raw1 = make("noreply@indeed.com", "Jane Driver applied to CDL Driver", html=INDEED_HTML, msgid="<1>")
+    raw2 = make("noreply@indeed.com", "Jane Driver applied to CDL Driver", html=INDEED_HTML, msgid="<2>")
+    client = FakeImap([raw1, raw2])
+    pipe, logs, sent = Pipeline(str(tmp_path / "l.db")), [], []
+    hook = WebhookSink("u", post=lambda u, p, h: sent.append(p) or 200)
+    n = fetch.pull_unseen(client, lambda raw: ingest_raw(pipe, raw, hook, log=logs.append))
+    assert n == 2 and len(client.flagged) == 2
+    assert len(pipe.all()) == 1 and pipe.get(1)["status"] == "pushed"
+    assert len(sent) == 1 and sent[0]["email"] == "jane.driver@gmail.com"
+    assert logs[0].startswith("new") and logs[1].startswith("dup")
+
+
+def test_cli_parse_ingest_list_draft(tmp_path, capsys):
+    eml = tmp_path / "m.eml"
+    eml.write_bytes(make("noreply@indeed.com", "Jane Driver applied to CDL Driver", html=INDEED_HTML))
+    db = str(tmp_path / "c.db")
+    main(["parse", str(eml)])
+    assert json.loads(capsys.readouterr().out)["name"] == "Jane Driver"
+    main(["--db", db, "ingest", str(eml)])
+    main(["--db", db, "list", "--status", "new"])
+    assert "jane.driver@gmail.com" in capsys.readouterr().out
+    main(["--db", db, "draft", "1"])
+    out = capsys.readouterr().out
+    assert "Hi Jane," in out and "CDL Driver position" in out and "CertRig hazmat course" in out
+    main(["--db", db, "status", "1", "--to", "enrolled"])
+    assert Pipeline(db).get(1)["status"] == "enrolled"
+
+
+def test_draft_without_name_or_job():
+    assert "Hi there," in outreach.draft({"name": "", "job_title": ""})
