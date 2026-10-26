@@ -65,10 +65,13 @@ def ingest_raw(pipe, raw, webhook=None, log=print):
 
 
 def draft_config():
+    """Name and company are required for a real send; phone, URL and postal address are
+    optional and their lines are left out of the email when unset."""
     return dict(sender_name=os.environ.get("LEADS_SENDER_NAME", "[your name]"),
                 company=os.environ.get("LEADS_COMPANY", "[company]"),
-                phone=os.environ.get("LEADS_PHONE", "[phone]"),
-                course_url=os.environ.get("LEADS_COURSE_URL", "[course URL]"))
+                phone=os.environ.get("LEADS_PHONE", ""),
+                course_url=os.environ.get("LEADS_COURSE_URL", ""),
+                postal_address=os.environ.get("LEADS_POSTAL_ADDRESS", ""))
 
 
 def send_followups(pipe, ids=(), status=None, really=False, smtp=None, log=print):
@@ -79,7 +82,9 @@ def send_followups(pipe, ids=(), status=None, really=False, smtp=None, log=print
     rows = [r for r in rows if r]
     cfg = draft_config()
     if really and any(v.startswith("[") for v in cfg.values()):
-        sys.exit("set LEADS_SENDER_NAME, LEADS_COMPANY, LEADS_PHONE and LEADS_COURSE_URL before sending")
+        sys.exit("set LEADS_SENDER_NAME and LEADS_COMPANY before sending")
+    if really and not cfg["postal_address"]:
+        log("warning: LEADS_POSTAL_ADDRESS is unset; CAN-SPAM requires a physical postal address")
     from_addr = os.environ.get("LEADS_FROM") or os.environ.get("LEADS_SMTP_USER", "[from]")
     if really and smtp is None:
         smtp = sendmod.smtp_client()

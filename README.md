@@ -49,8 +49,7 @@ course follow-up. Stdlib only.
     python -m leads push --webhook URL          # push anything still 'new'
     python -m leads export leads.csv            # for a mail-merge / import into your CRM
     python -m leads draft 3                     # follow-up email for lead #3
-    export LEADS_SMTP_HOST=smtp.gmail.com LEADS_SMTP_PORT=465 LEADS_SMTP_USER=support@... LEADS_SMTP_PASSWORD=...
-    export LEADS_SENDER_NAME="Todd" LEADS_COMPANY="..." LEADS_PHONE="..." LEADS_COURSE_URL="https://..."
+    cp certrig.env.example .env && $EDITOR .env && set -a && . ./.env && set +a   # Zoho + Certrig values
     python -m leads send                        # dry run: shows who would get the follow-up
     python -m leads send --really               # sends to every 'new' lead, marks them 'contacted'
     python -m leads status 3 --to enrolled
@@ -63,7 +62,13 @@ and a reply starting with "stop"/"unsubscribe" from a known lead automatically m
 `not_interested` on the next `imap` run (they are never emailed again).
 
 To run it on a schedule, put the `imap` command in cron (every 15 minutes is plenty) or a
-Windows scheduled task. Gmail needs IMAP enabled and an App Password (2-step verification on).
+Windows scheduled task. Zoho Mail: switch on IMAP access in its settings and use an
+app-specific password if two-factor auth is on. Gmail: enable IMAP and use an App Password.
+
+**If the course already lives in GoHighLevel:** GHL workflows can start from an "Inbound
+Webhook" trigger. Point `--webhook` at that URL and each new lead becomes a GHL contact, so
+GHL's own campaigns, unsubscribe handling and tracking do the emailing instead of `send`.
+Map the JSON fields (name, email, phone, job_title, source, campaign) in the workflow.
 
 - **Indeed's email layout is not verified.** The parser looks for labelled lines
   (`Name:`, `Phone:`, `Email:`, `Applied for:` ...) and subjects like "Jane Doe applied to

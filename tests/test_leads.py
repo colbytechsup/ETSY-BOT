@@ -141,12 +141,22 @@ def test_cli_parse_ingest_list_draft(tmp_path, capsys):
     main(["--db", db, "draft", "1"])
     out = capsys.readouterr().out
     assert "Hi Jane," in out and "CDL Driver position" in out and "CertRig hazmat course" in out
+    assert "call" not in out and "[" not in out.split("\n", 1)[1].replace("[your name]", "").replace("[company]", "")
     main(["--db", db, "status", "1", "--to", "enrolled"])
     assert Pipeline(db).get(1)["status"] == "enrolled"
 
 
 def test_draft_without_name_or_job():
     assert "Hi there," in outreach.draft({"name": "", "job_title": ""})
+
+
+def test_draft_optional_lines():
+    bare = outreach.draft({"name": "A B"}, sender_name="Todd Bryson", company="Certrig")
+    assert "call" not in bare and "More about" not in bare and bare.rstrip().endswith("Certrig")
+    full = outreach.draft({"name": "A B"}, sender_name="Todd Bryson", company="Certrig",
+                          phone="555", course_url="https://c", postal_address="1 Main St, Houston TX")
+    assert " or call 555." in full and "More about the course: https://c" in full
+    assert full.rstrip().endswith("Certrig\n1 Main St, Houston TX")
 
 
 class FakeSmtp:
@@ -173,8 +183,8 @@ def test_build_message_from_draft():
 
 def test_send_followups_dry_run_then_real(tmp_path, monkeypatch):
     from leads.__main__ import send_followups
-    for k, v in {"LEADS_SENDER_NAME": "Todd", "LEADS_COMPANY": "PH", "LEADS_PHONE": "555",
-                 "LEADS_COURSE_URL": "https://x", "LEADS_FROM": "support@course.com"}.items():
+    for k, v in {"LEADS_SENDER_NAME": "Todd", "LEADS_COMPANY": "PH",
+                 "LEADS_FROM": "support@course.com"}.items():
         monkeypatch.setenv(k, v)
     pipe = Pipeline(str(tmp_path / "l.db"))
     pipe.add(Lead(name="Jane", email="jane@x.com"))
@@ -195,7 +205,7 @@ def test_send_followups_dry_run_then_real(tmp_path, monkeypatch):
 def test_send_refuses_placeholders(tmp_path, monkeypatch):
     import pytest
     from leads.__main__ import send_followups
-    for k in ("LEADS_SENDER_NAME", "LEADS_COMPANY", "LEADS_PHONE", "LEADS_COURSE_URL"):
+    for k in ("LEADS_SENDER_NAME", "LEADS_COMPANY"):
         monkeypatch.delenv(k, raising=False)
     pipe = Pipeline(str(tmp_path / "l.db"))
     pipe.add(Lead(name="Jane", email="jane@x.com"))
