@@ -3,6 +3,7 @@
   parse FILE...            print parsed fields as JSON (no database; use to test a sample)
   ingest FILE...           parse .eml files into the pipeline ("-" = stdin)
   imap                     pull unread messages from the inbox (LEADS_IMAP_* env vars)
+  csv FILE.csv             import a candidate export (columns auto-detected by header name)
   list [--status new]      show leads
   push --webhook URL       POST every 'new' lead to your marketing tool, mark 'pushed'
   export OUT.csv           write leads to CSV
@@ -10,8 +11,12 @@
   send [ID...|--status new] [--really]   email the follow-up from the support mailbox
                            (dry run unless --really; LEADS_SMTP_* env vars; marks 'contacted')
   status ID... --to X      set status (new/pushed/contacted/enrolled/not_interested/bad)
+
+Settings are read from the environment, and from a .env file in the current directory
+(or the file named by LEADS_ENV) first. --webhook defaults to LEADS_WEBHOOK.
 """
 import argparse
+import csv as csvmod
 import email
 import email.policy
 import email.utils
@@ -21,9 +26,80 @@ import sys
 
 from . import fetch, outreach
 from . import send as sendmod
-from .parser import body_text, parse_bytes, parse_file
+from .parser import EMAIL_RE, Lead, body_text, parse_bytes, parse_file
 from .pipeline import STATUSES, Pipeline
 from .sinks import WebhookSink
+
+
+def load_env(path=None):
+    """Minimal .env loader (KEY=value lines, # comments, optional quotes). Existing environment
+    variables win. Returns the number of keys set."""
+    path = path or os.environ.get("LEADS_ENV", ".env")
+    if not os.path.exists(path):
+        return 0
+    n = 0
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            k, v = k.strip(), v.strip().strip("'\"")
+            if k and k not in os.environ:
+                os.environ[k] = v
+                n += 1
+    return n
+
+
+CSV_COLUMNS = {  # lead field -> header words to look for (lowercased, in order of preference)
+    "name": ("name", "candidate", "full name"),
+    "first": ("first name", "first", "firstname", "given"),
+    "last": ("last name", "last", "lastname", "surname", "family"),
+    "email": ("email", "e-mail"),
+    "phone": ("phone", "mobile", "cell", "telephone"),
+    "job_title": ("position", "job", "role", "applied"),
+    "location": ("location", "city", "address"),
+    "source": ("source", "origin", "channel"),
+}
+
+
+def import_csv(pipe, path, default_source="csv", log=print):
+    """Import a candidate export (Breezy, Indeed, a spreadsheet). Columns are matched by
+    header text, so the exact export format does not matter as long as the headers are
+    recognisable. Returns (added, skipped)."""
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        rows = list(csvmod.DictReader(f))
+    if not rows:
+        return 0, 0
+    headers = {h.lower().strip(): h for h in rows[0].keys() if h}
+
+    def col(field):
+        for want in CSV_COLUMNS[field]:
+            for low, orig in headers.items():
+                if low == want or (want in low and field != "name"):
+                    return orig
+        return None
+
+    cols = {f: col(f) for f in CSV_COLUMNS}
+    added = skipped = 0
+    for r in rows:
+        get = lambda f: (r.get(cols[f]) or "").strip() if cols[f] else ""
+        name = get("name") or (get("first") + " " + get("last")).strip()
+        email_addr = get("email")
+        if not EMAIL_RE.fullmatch(email_addr or ""):
+            email_addr = ""
+        lead = Lead(name=name, email=email_addr, phone=get("phone"), job_title=get("job_title"),
+                    location=get("location"), source=get("source") or default_source,
+                    subject=f"csv import: {os.path.basename(path)}")
+        if not (lead.email or lead.phone):
+            skipped += 1
+            continue
+        if pipe.add(lead) is None:
+            skipped += 1
+        else:
+            added += 1
+    log(f"{added} added, {skipped} skipped (duplicate or no email/phone) from {path}")
+    return added, skipped
 
 
 def own_domains():
@@ -114,7 +190,7 @@ def send_followups(pipe, ids=(), status=None, really=False, smtp=None, log=print
 def main(argv=None):
     p = argparse.ArgumentParser(prog="leads", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--db", default=os.environ.get("LEADS_DB", "leads.db"))
+    p.add_argument("--db")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("parse").add_argument("files", nargs="+")
     s = sub.add_parser("ingest"); s.add_argument("files", nargs="+"); s.add_argument("--webhook")
@@ -126,7 +202,12 @@ def main(argv=None):
     s = sub.add_parser("status"); s.add_argument("ids", nargs="+", type=int); s.add_argument("--to", required=True, choices=STATUSES)
     s = sub.add_parser("send"); s.add_argument("ids", nargs="*", type=int); s.add_argument("--status")
     s.add_argument("--really", action="store_true", help="actually send (default is a dry run)")
+    s = sub.add_parser("csv"); s.add_argument("file"); s.add_argument("--source", default="csv")
+    load_env()
+    p.set_defaults(db=os.environ.get("LEADS_DB", "leads.db"))
     a = p.parse_args(argv)
+    if getattr(a, "webhook", None) is None and a.cmd in ("ingest", "imap"):
+        a.webhook = os.environ.get("LEADS_WEBHOOK") or None
 
     if a.cmd == "parse":
         for f in a.files:
@@ -165,6 +246,8 @@ def main(argv=None):
         send_followups(pipe, a.ids, a.status, a.really)
     elif a.cmd == "status":
         pipe.set_status(a.ids, a.to)
+    elif a.cmd == "csv":
+        import_csv(pipe, a.file, a.source)
 
 
 if __name__ == "__main__":

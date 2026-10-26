@@ -61,9 +61,21 @@ on a schedule. Follow-ups go out from the support address, replies land in the s
 and a reply starting with "stop"/"unsubscribe" from a known lead automatically marks them
 `not_interested` on the next `imap` run (they are never emailed again).
 
-To run it on a schedule, put the `imap` command in cron (every 15 minutes is plenty) or a
-Windows scheduled task. Zoho Mail: switch on IMAP access in its settings and use an
-app-specific password if two-factor auth is on. Gmail: enable IMAP and use an App Password.
+    python -m leads csv breezy-export.csv --source breezy   # backfill from a candidate export
+
+**Windows (always-on work PC) setup.** Install Python 3 from python.org (tick "Add to PATH"),
+clone this repo, copy `certrig.env.example` to `.env` in the repo folder and fill in the
+Zoho password and the GHL webhook URL. Test by hand first:
+
+    python -m leads ingest sample.eml      # or: python -m leads imap --keep-unread
+    python -m leads list
+
+Then schedule `run_leads.cmd` every 15 minutes (run from an admin Command Prompt, one line):
+
+    schtasks /Create /SC MINUTE /MO 15 /TN "Certrig leads" /TR "\"C:\path\to\ETSY-BOT\run_leads.cmd\"" /RL LIMITED
+
+Output accumulates in `leads.log` next to the script. Zoho Mail: switch on IMAP access in
+its settings and use an app-specific password if two-factor auth is on.
 
 **If the course already lives in GoHighLevel:** GHL workflows can start from an "Inbound
 Webhook" trigger. Point `--webhook` at that URL and each new lead becomes a GHL contact, so

@@ -1,4 +1,5 @@
 import json
+import os
 from email.message import EmailMessage
 
 from leads import fetch, outreach
@@ -97,7 +98,8 @@ def test_webhook_sink_posts_lead_fields():
     assert sink.send({"id": 1, "name": "J", "email": "j@x", "dedup_key": "e", "added": 1.0, "campaign": "certrig_hazmat"}) == 200
     url, payload, headers = calls[0]
     assert url == "https://hooks.example/abc" and headers == {"X-Key": "k"}
-    assert payload == {"id": 1, "name": "J", "email": "j@x", "campaign": "certrig_hazmat"}
+    assert payload == {"id": 1, "name": "J", "email": "j@x", "campaign": "certrig_hazmat",
+                       "first_name": "J", "last_name": "", "tags": ["certrig_hazmat"]}
     json.dumps(payload)
 
 
@@ -227,3 +229,52 @@ def test_opt_out_reply_marks_not_interested(tmp_path):
     # an unknown sender saying stop is just a (weird) new lead, not an opt-out
     raw = make("New Guy <guy@x.com>", "hi", text="stop by anytime, interested in hazmat")
     assert ingest_raw(pipe, raw, log=logs.append) == 2
+
+
+def test_load_env_and_webhook_default(tmp_path, monkeypatch):
+    from leads.__main__ import load_env
+    env = tmp_path / ".env"
+    env.write_text("# comment\nLEADS_COMPANY='Certrig'\nLEADS_WEBHOOK=https://h/x\n\nBAD LINE\nLEADS_PHONE=\n")
+    monkeypatch.delenv("LEADS_COMPANY", raising=False)
+    monkeypatch.setenv("LEADS_WEBHOOK", "https://already/set")
+    monkeypatch.delenv("LEADS_PHONE", raising=False)
+    assert load_env(str(env)) == 2
+    assert os.environ["LEADS_COMPANY"] == "Certrig"
+    assert os.environ["LEADS_WEBHOOK"] == "https://already/set"  # existing env wins
+    assert os.environ["LEADS_PHONE"] == ""
+
+
+def test_webhook_payload_is_ghl_friendly():
+    from leads.sinks import enrich
+    p = enrich({"id": 1, "name": "Jane Q Driver", "email": "j@x", "source": "indeed",
+                "campaign": "certrig_hazmat", "dedup_key": "k", "added": 1.0})
+    assert (p["first_name"], p["last_name"]) == ("Jane", "Q Driver")
+    assert p["tags"] == ["certrig_hazmat", "indeed"] and "dedup_key" not in p
+    assert enrich({"name": ""})["first_name"] == ""
+
+
+def test_csv_import_detects_columns(tmp_path):
+    from leads.__main__ import import_csv
+    f = tmp_path / "export.csv"
+    f.write_text("\ufeffFirst Name,Last Name,Email Address,Phone Number,Position,Stage\n"
+                 "Ann,Lee,ann@x.com,555-111-2222,CDL Driver,Applied\n"
+                 "Bob,Ray,not-an-email,,Tanker,Applied\n"
+                 "Cat,Fox,cat@x.com,,CDL Driver,Hired\n"
+                 "Ann,Lee,ANN@x.com,,CDL Driver,Applied\n")
+    pipe = Pipeline(str(tmp_path / "l.db"))
+    logs = []
+    assert import_csv(pipe, str(f), "breezy", log=logs.append) == (2, 2)
+    rows = pipe.all()
+    assert [(r["name"], r["email"], r["job_title"], r["source"]) for r in rows] == [
+        ("Ann Lee", "ann@x.com", "CDL Driver", "breezy"), ("Cat Fox", "cat@x.com", "CDL Driver", "breezy")]
+    assert rows[0]["phone"] == "555-111-2222"
+
+
+def test_cli_csv_and_env_file(tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("LEADS_DB=fromenv.db\n")
+    monkeypatch.delenv("LEADS_DB", raising=False)
+    (tmp_path / "x.csv").write_text("name,email\nZed Zed,zed@x.com\n")
+    main(["csv", "x.csv"])
+    assert "1 added" in capsys.readouterr().out
+    assert Pipeline("fromenv.db").get(1)["name"] == "Zed Zed"
