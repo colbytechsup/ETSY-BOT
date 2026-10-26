@@ -147,3 +147,73 @@ def test_cli_parse_ingest_list_draft(tmp_path, capsys):
 
 def test_draft_without_name_or_job():
     assert "Hi there," in outreach.draft({"name": "", "job_title": ""})
+
+
+class FakeSmtp:
+    def __init__(self):
+        self.sent, self.quit_called = [], False
+
+    def send_message(self, m):
+        self.sent.append(m)
+
+    def quit(self):
+        self.quit_called = True
+
+
+def test_build_message_from_draft():
+    from leads import send
+    text = outreach.draft({"name": "Jane Driver", "job_title": "CDL Driver"}, sender_name="Todd",
+                          company="PH", phone="555", course_url="https://x")
+    m = send.build_message("jane@x.com", text, "support@course.com")
+    assert m["Subject"] == "Jane, a hazmat endorsement could open more doors"
+    assert m["To"] == "jane@x.com" and m["From"] == "support@course.com"
+    assert "mailto:support@course.com" in m["List-Unsubscribe"]
+    assert m.get_content().startswith("Hi Jane,")
+
+
+def test_send_followups_dry_run_then_real(tmp_path, monkeypatch):
+    from leads.__main__ import send_followups
+    for k, v in {"LEADS_SENDER_NAME": "Todd", "LEADS_COMPANY": "PH", "LEADS_PHONE": "555",
+                 "LEADS_COURSE_URL": "https://x", "LEADS_FROM": "support@course.com"}.items():
+        monkeypatch.setenv(k, v)
+    pipe = Pipeline(str(tmp_path / "l.db"))
+    pipe.add(Lead(name="Jane", email="jane@x.com"))
+    pipe.add(Lead(name="NoMail", phone="555-111-2222"))
+    pipe.add(Lead(name="Done", email="done@x.com"))
+    pipe.set_status([3], "contacted")
+    logs = []
+    assert send_followups(pipe, really=False, log=logs.append) == [1]
+    assert pipe.get(1)["status"] == "new" and any(l.startswith("dry run") for l in logs)
+    smtp = FakeSmtp()
+    assert send_followups(pipe, really=True, smtp=smtp, log=logs.append) == [1]
+    assert [m["To"] for m in smtp.sent] == ["jane@x.com"] and smtp.quit_called
+    assert pipe.get(1)["status"] == "contacted"
+    # second run sends nothing: already contacted
+    assert send_followups(pipe, really=True, smtp=FakeSmtp(), log=logs.append) == []
+
+
+def test_send_refuses_placeholders(tmp_path, monkeypatch):
+    import pytest
+    from leads.__main__ import send_followups
+    for k in ("LEADS_SENDER_NAME", "LEADS_COMPANY", "LEADS_PHONE", "LEADS_COURSE_URL"):
+        monkeypatch.delenv(k, raising=False)
+    pipe = Pipeline(str(tmp_path / "l.db"))
+    pipe.add(Lead(name="Jane", email="jane@x.com"))
+    with pytest.raises(SystemExit):
+        send_followups(pipe, really=True, smtp=FakeSmtp(), log=lambda s: None)
+
+
+def test_opt_out_reply_marks_not_interested(tmp_path):
+    pipe = Pipeline(str(tmp_path / "l.db"))
+    pipe.add(Lead(name="Jane", email="jane@x.com"))
+    logs = []
+    raw = make("Jane <jane@x.com>", "Re: a hazmat endorsement", text="STOP please\n\n> original quoted")
+    assert ingest_raw(pipe, raw, log=logs.append) is None
+    assert pipe.get(1)["status"] == "not_interested" and logs == ["optout jane@x.com"]
+    assert len(pipe.all()) == 1
+    # a normal reply from a known lead is not an opt-out and not a duplicate lead either
+    raw = make("Jane <jane@x.com>", "Re: a hazmat endorsement", text="Yes, send me the dates!")
+    assert ingest_raw(pipe, raw, log=logs.append) is None and logs[-1].startswith("dup")
+    # an unknown sender saying stop is just a (weird) new lead, not an opt-out
+    raw = make("New Guy <guy@x.com>", "hi", text="stop by anytime, interested in hazmat")
+    assert ingest_raw(pipe, raw, log=logs.append) == 2

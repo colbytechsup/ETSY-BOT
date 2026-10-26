@@ -49,7 +49,18 @@ course follow-up. Stdlib only.
     python -m leads push --webhook URL          # push anything still 'new'
     python -m leads export leads.csv            # for a mail-merge / import into your CRM
     python -m leads draft 3                     # follow-up email for lead #3
-    python -m leads status 3 --to contacted
+    export LEADS_SMTP_HOST=smtp.gmail.com LEADS_SMTP_PORT=465 LEADS_SMTP_USER=support@... LEADS_SMTP_PASSWORD=...
+    export LEADS_SENDER_NAME="Todd" LEADS_COMPANY="..." LEADS_PHONE="..." LEADS_COURSE_URL="https://..."
+    python -m leads send                        # dry run: shows who would get the follow-up
+    python -m leads send --really               # sends to every 'new' lead, marks them 'contacted'
+    python -m leads status 3 --to enrolled
+
+**Simplest setup, no marketing tool needed:** use the course's support mailbox for everything.
+Have the Breezy/Indeed notifications auto-forwarded to it (a Gmail filter on Todd's account),
+point `LEADS_IMAP_*` and `LEADS_SMTP_*` at that mailbox, and run `imap` then `send --really`
+on a schedule. Follow-ups go out from the support address, replies land in the same inbox,
+and a reply starting with "stop"/"unsubscribe" from a known lead automatically marks them
+`not_interested` on the next `imap` run (they are never emailed again).
 
 To run it on a schedule, put the `imap` command in cron (every 15 minutes is plenty) or a
 Windows scheduled task. Gmail needs IMAP enabled and an App Password (2-step verification on).

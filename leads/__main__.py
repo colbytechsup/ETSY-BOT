@@ -7,15 +7,21 @@
   push --webhook URL       POST every 'new' lead to your marketing tool, mark 'pushed'
   export OUT.csv           write leads to CSV
   draft ID                 print a follow-up email for one lead
+  send [ID...|--status new] [--really]   email the follow-up from the support mailbox
+                           (dry run unless --really; LEADS_SMTP_* env vars; marks 'contacted')
   status ID... --to X      set status (new/pushed/contacted/enrolled/not_interested/bad)
 """
 import argparse
+import email
+import email.policy
+import email.utils
 import json
 import os
 import sys
 
 from . import fetch, outreach
-from .parser import parse_bytes, parse_file
+from . import send as sendmod
+from .parser import body_text, parse_bytes, parse_file
 from .pipeline import STATUSES, Pipeline
 from .sinks import WebhookSink
 
@@ -28,7 +34,24 @@ def read_raw(path):
     return sys.stdin.buffer.read() if path == "-" else open(path, "rb").read()
 
 
+def handle_opt_out(pipe, raw, log=print):
+    """A reply from someone already in the pipeline that starts with stop/unsubscribe/etc.
+    marks them not_interested and is not treated as a new lead. Returns True if handled."""
+    msg = email.message_from_bytes(raw, policy=email.policy.default)
+    _, addr = email.utils.parseaddr(msg.get("From", ""))
+    if not addr:
+        return False
+    rows = [r for r in pipe.all() if r["email"].lower() == addr.lower()]
+    if not rows or not sendmod.is_opt_out(body_text(msg)):
+        return False
+    pipe.set_status([r["id"] for r in rows], "not_interested", note="opted out by reply")
+    log(f"optout {addr}")
+    return True
+
+
 def ingest_raw(pipe, raw, webhook=None, log=print):
+    if handle_opt_out(pipe, raw, log):
+        return None
     lead = parse_bytes(raw, own_domains())
     lid = pipe.add(lead)
     if lid is None:
@@ -39,6 +62,48 @@ def ingest_raw(pipe, raw, webhook=None, log=print):
         webhook.send(pipe.get(lid))
         pipe.set_status([lid], "pushed")
     return lid
+
+
+def draft_config():
+    return dict(sender_name=os.environ.get("LEADS_SENDER_NAME", "[your name]"),
+                company=os.environ.get("LEADS_COMPANY", "[company]"),
+                phone=os.environ.get("LEADS_PHONE", "[phone]"),
+                course_url=os.environ.get("LEADS_COURSE_URL", "[course URL]"))
+
+
+def send_followups(pipe, ids=(), status=None, really=False, smtp=None, log=print):
+    """Email the follow-up to the given leads (or every lead with `status`). Dry run unless
+    `really`; refuses placeholders left in the draft; skips leads with no email or already
+    contacted/opted out. Returns the ids sent (or that would be sent)."""
+    rows = [pipe.get(i) for i in ids] if ids else pipe.all(status or "new")
+    rows = [r for r in rows if r]
+    cfg = draft_config()
+    if really and any(v.startswith("[") for v in cfg.values()):
+        sys.exit("set LEADS_SENDER_NAME, LEADS_COMPANY, LEADS_PHONE and LEADS_COURSE_URL before sending")
+    from_addr = os.environ.get("LEADS_FROM") or os.environ.get("LEADS_SMTP_USER", "[from]")
+    if really and smtp is None:
+        smtp = sendmod.smtp_client()
+    done = []
+    for r in rows:
+        if not r["email"]:
+            log(f"skip  #{r['id']} {r['name']}: no email")
+            continue
+        if r["status"] in ("contacted", "enrolled", "not_interested", "bad"):
+            log(f"skip  #{r['id']} {r['name']}: status {r['status']}")
+            continue
+        msg = sendmod.build_message(r["email"], outreach.draft(r, **cfg), from_addr)
+        if really:
+            sendmod.send(smtp, msg)
+            pipe.set_status([r["id"]], "contacted", note="follow-up sent")
+            log(f"sent  #{r['id']} {r['name']} <{r['email']}>")
+        else:
+            log(f"would #{r['id']} {r['name']} <{r['email']}>  subject: {msg['Subject']}")
+        done.append(r["id"])
+    if not really:
+        log(f"dry run: {len(done)} email(s) would be sent. Add --really to send.")
+    if really and smtp is not None and hasattr(smtp, "quit"):
+        smtp.quit()
+    return done
 
 
 def main(argv=None):
@@ -54,6 +119,8 @@ def main(argv=None):
     s = sub.add_parser("export"); s.add_argument("out"); s.add_argument("--status")
     sub.add_parser("draft").add_argument("id", type=int)
     s = sub.add_parser("status"); s.add_argument("ids", nargs="+", type=int); s.add_argument("--to", required=True, choices=STATUSES)
+    s = sub.add_parser("send"); s.add_argument("ids", nargs="*", type=int); s.add_argument("--status")
+    s.add_argument("--really", action="store_true", help="actually send (default is a dry run)")
     a = p.parse_args(argv)
 
     if a.cmd == "parse":
@@ -88,10 +155,9 @@ def main(argv=None):
         lead = pipe.get(a.id)
         if not lead:
             sys.exit(f"no lead #{a.id}")
-        print(outreach.draft(lead, sender_name=os.environ.get("LEADS_SENDER_NAME", "[your name]"),
-                             company=os.environ.get("LEADS_COMPANY", "[company]"),
-                             phone=os.environ.get("LEADS_PHONE", "[phone]"),
-                             course_url=os.environ.get("LEADS_COURSE_URL", "[course URL]")))
+        print(outreach.draft(lead, **draft_config()))
+    elif a.cmd == "send":
+        send_followups(pipe, a.ids, a.status, a.really)
     elif a.cmd == "status":
         pipe.set_status(a.ids, a.to)
 
