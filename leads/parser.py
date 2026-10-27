@@ -67,6 +67,7 @@ class Lead:
     campaign: str = "certrig_hazmat"
     external_id: str = ""  # e.g. "breezy:<candidate_id>" from a notification link
     headline: str = ""     # e.g. "CDL Driver @ Sea Glass Trucking" (Breezy notification)
+    company: str = ""      # which Breezy company / client the lead applied through
 
     def to_dict(self):
         return asdict(self)

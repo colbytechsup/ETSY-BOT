@@ -8,7 +8,7 @@ from .parser import Lead
 STATUSES = ("new", "pushed", "contacted", "enrolled", "not_interested", "bad")
 COLUMNS = ("id", "name", "email", "phone", "source", "job_title", "location", "subject",
            "sender", "received", "message_id", "campaign", "status", "added", "notes",
-           "external_id", "headline")
+           "external_id", "headline", "company")
 
 
 class Pipeline:
@@ -20,9 +20,9 @@ class Pipeline:
             " name TEXT, email TEXT, phone TEXT, source TEXT, job_title TEXT, location TEXT,"
             " subject TEXT, sender TEXT, received TEXT, message_id TEXT, campaign TEXT,"
             " status TEXT DEFAULT 'new', added REAL, notes TEXT DEFAULT '',"
-            " external_id TEXT DEFAULT '', headline TEXT DEFAULT '')")
+            " external_id TEXT DEFAULT '', headline TEXT DEFAULT '', company TEXT DEFAULT '')")
         have = {r[1] for r in self.db.execute("PRAGMA table_info(leads)")}
-        for col in ("external_id", "headline"):  # databases created before these columns
+        for col in ("external_id", "headline", "company"):  # databases created before these columns
             if col not in have:
                 self.db.execute(f"ALTER TABLE leads ADD COLUMN {col} TEXT DEFAULT ''")
         self.db.commit()
@@ -52,18 +52,19 @@ class Pipeline:
                 self.db.execute(
                     "UPDATE leads SET dedup_key=?, email=?, phone=?, location=COALESCE(NULLIF(?, ''), location),"
                     " job_title=COALESCE(NULLIF(job_title, ''), ?), source=CASE WHEN source IN ('breezy','email') THEN ? ELSE source END,"
-                    " notes=notes || ?, received=COALESCE(NULLIF(received, ''), ?) WHERE id=?",
+                    " notes=notes || ?, received=COALESCE(NULLIF(received, ''), ?),"
+                    " company=COALESCE(NULLIF(company, ''), ?) WHERE id=?",
                     (lead.dedup_key(), lead.email, lead.phone, lead.location, lead.job_title, lead.source,
-                     f" [contact filled from {lead.subject or lead.source}]", lead.received, ph[0]))
+                     f" [contact filled from {lead.subject or lead.source}]", lead.received, lead.company, ph[0]))
                 self.db.commit()
                 return ph[0]
         elif self._known_by_name(lead):
             return None
         cur = self.db.execute(
             "INSERT OR IGNORE INTO leads(dedup_key, name, email, phone, source, job_title, location,"
-            " subject, sender, received, message_id, campaign, added, external_id, headline)"
+            " subject, sender, received, message_id, campaign, added, external_id, headline, company)"
             " VALUES(:k, :name, :email, :phone, :source, :job_title, :location, :subject,"
-            " :sender, :received, :message_id, :campaign, :added, :external_id, :headline)",
+            " :sender, :received, :message_id, :campaign, :added, :external_id, :headline, :company)",
             dict(d, k=lead.dedup_key(), added=time.time()))
         self.db.commit()
         return cur.lastrowid if cur.rowcount else None

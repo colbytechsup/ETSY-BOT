@@ -3,7 +3,8 @@
   parse FILE...            print parsed fields as JSON (no database; use to test a sample)
   ingest FILE...           parse .eml files into the pipeline ("-" = stdin)
   imap                     pull unread messages from the inbox (LEADS_IMAP_* env vars)
-  csv FILE.csv             import a candidate export (columns auto-detected by header name)
+  csv FILE.csv [--company "Name"]  import a candidate export (columns auto-detected); the
+                           company becomes a tag in the CRM
   list [--status new]      show leads
   push                     send every 'new' lead to the configured sink, mark 'pushed'
   sink-test                send one fake contact to the sink to check the setup
@@ -105,7 +106,7 @@ def match_columns(headers):
     return cols
 
 
-def import_csv(pipe, path, default_source="csv", log=print):
+def import_csv(pipe, path, default_source="csv", log=print, company=""):
     """Import a candidate export (Breezy, Indeed, a spreadsheet). Columns are matched by
     header text, so the exact export format does not matter as long as the headers are
     recognisable. Source is normalised to a tag; stage is kept in notes. Returns (added, skipped)."""
@@ -123,7 +124,7 @@ def import_csv(pipe, path, default_source="csv", log=print):
             email_addr = ""
         lead = Lead(name=name, email=email_addr, phone=get("phone"), job_title=get("job_title"),
                     location=get("location"), source=normalize_source(get("source"), default_source),
-                    received=get("added"), subject=f"csv import: {os.path.basename(path)}")
+                    received=get("added"), subject=f"csv import: {os.path.basename(path)}", company=company)
         if not (lead.email or lead.phone):
             skipped += 1
             continue
@@ -244,6 +245,7 @@ def main(argv=None):
     s = sub.add_parser("send"); s.add_argument("ids", nargs="*", type=int); s.add_argument("--status")
     s.add_argument("--really", action="store_true", help="actually send (default is a dry run)")
     s = sub.add_parser("csv"); s.add_argument("file"); s.add_argument("--source", default="csv")
+    s.add_argument("--company", default="", help='which Breezy company the export is from, e.g. "Small Potato Trucking"')
     load_env()
     p.set_defaults(db=os.environ.get("LEADS_DB", "leads.db"))
     a = p.parse_args(argv)
@@ -297,7 +299,7 @@ def main(argv=None):
     elif a.cmd == "status":
         pipe.set_status(a.ids, a.to)
     elif a.cmd == "csv":
-        import_csv(pipe, a.file, a.source)
+        import_csv(pipe, a.file, a.source, company=a.company)
 
 
 if __name__ == "__main__":

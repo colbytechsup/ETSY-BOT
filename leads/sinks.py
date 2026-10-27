@@ -2,6 +2,7 @@
 (a Zapier/Make catch hook, a HubSpot/Mailchimp workflow endpoint, your own server).
 The payload is the Lead fields plus `campaign`; map them on the receiving side."""
 import json
+import re
 import urllib.request
 
 
@@ -19,7 +20,8 @@ def enrich(lead_dict):
     payload = {k: v for k, v in lead_dict.items() if k not in ("dedup_key", "added")}
     first, _, last = (payload.get("name") or "").strip().partition(" ")
     payload["first_name"], payload["last_name"] = first, last.strip()
-    payload["tags"] = [t for t in (payload.get("campaign"), payload.get("source")) if t]
+    company = re.sub(r"[^a-z0-9]+", "_", (payload.get("company") or "").lower()).strip("_")
+    payload["tags"] = [t for t in (payload.get("campaign"), payload.get("source"), company) if t]
     return payload
 
 

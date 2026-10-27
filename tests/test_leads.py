@@ -335,9 +335,12 @@ def test_csv_import_breezy_export_layout(tmp_path):
                  '"Pat Example","",,"pat@example.com","+1 555 010 0001","Arizona, US","","CDL-A Regional Driver","Applied","Indeed Organic Jobs","","2026-10-15","21:10"\n'
                  '"Sam Sample","",,"sam@example.org","+15550100002","Massachusetts, US","","Furniture Driver","Contacted","ziprecruiter","","2026-10-24","12:10"\n')
     pipe = Pipeline(str(tmp_path / "l.db"))
-    assert import_csv(pipe, str(f), "breezy", log=lambda s: None) == (2, 0)
+    assert import_csv(pipe, str(f), "breezy", log=lambda s: None, company="Small Potato Trucking") == (2, 0)
     r = pipe.get(1)
     assert (r["email"], r["phone"], r["location"], r["job_title"]) == ("pat@example.com", "+1 555 010 0001", "Arizona, US", "CDL-A Regional Driver")
+    assert r["company"] == "Small Potato Trucking"
+    from leads.sinks import enrich
+    assert enrich(r)["tags"] == ["certrig_hazmat", "indeed", "small_potato_trucking"]
     assert r["source"] == "indeed" and r["received"] == "2026-10-15" and "Indeed Organic Jobs" in r["notes"]
     assert pipe.get(2)["source"] == "ziprecruiter"
     assert normalize_source("Career Portal") == "career_portal" and normalize_source("jobs.transforce.com") == "jobs_transforce_com"
