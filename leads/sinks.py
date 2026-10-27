@@ -29,3 +29,40 @@ class WebhookSink:
 
     def send(self, lead_dict):
         return self.post(self.url, enrich(lead_dict), self.headers)
+
+
+class GhlSink:
+    """Create/update a GoHighLevel contact through the public API with a Private Integration
+    token (sub-account Settings > Private Integrations, scope contacts.write). API calls are
+    not Premium Workflow Actions, so there is no per-execution charge that I know of; verify.
+
+    Endpoint and header values are my understanding of the v2 API (marketplace.gohighlevel.com
+    /docs): POST {base}/contacts/upsert with `Authorization: Bearer <token>` and a `Version`
+    date header. The upsert matches on email/phone per the location's duplicate setting.
+    If GHL returns 401/422, check the token scopes and LEADS_GHL_VERSION first."""
+    base = "https://services.leadconnectorhq.com"
+
+    def __init__(self, token, location_id, version="2021-07-28", post=post_json):
+        self.token, self.location, self.version, self.post = token, location_id, version, post
+
+    def send(self, lead_dict):
+        p = enrich(lead_dict)
+        body = {"locationId": self.location, "firstName": p["first_name"], "lastName": p["last_name"],
+                "name": p.get("name") or "", "email": p.get("email") or None,
+                "phone": p.get("phone") or None, "source": p.get("source") or "",
+                "tags": p["tags"], "companyName": "", "customFields": []}
+        body = {k: v for k, v in body.items() if v not in (None, "", [])}
+        if p.get("job_title"):
+            body["customFields"] = [{"key": "job_applied_for", "field_value": p["job_title"]}]
+        headers = {"Authorization": f"Bearer {self.token}", "Version": self.version, "Accept": "application/json"}
+        return self.post(f"{self.base}/contacts/upsert", body, headers)
+
+
+def sink_from_env(env):
+    """Pick the configured sink: GHL API if LEADS_GHL_TOKEN is set, else webhook, else None."""
+    if env.get("LEADS_GHL_TOKEN") and env.get("LEADS_GHL_LOCATION"):
+        return GhlSink(env["LEADS_GHL_TOKEN"], env["LEADS_GHL_LOCATION"],
+                       env.get("LEADS_GHL_VERSION", "2021-07-28"))
+    if env.get("LEADS_WEBHOOK"):
+        return WebhookSink(env["LEADS_WEBHOOK"])
+    return None

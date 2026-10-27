@@ -44,7 +44,8 @@ course follow-up. Stdlib only.
     python -m leads ingest a.eml b.eml          # parse into leads.db (dedups by email/phone)
     export LEADS_IMAP_HOST=imap.gmail.com LEADS_IMAP_USER=... LEADS_IMAP_PASSWORD=...
     export LEADS_OWN_DOMAINS=phtruckingpros.com # addresses that are never the lead
-    python -m leads imap --webhook https://hooks.zapier.com/...   # pull unread, push new leads
+    python -m leads sink-test                   # one fake contact into GHL to prove the setup
+    python -m leads imap                        # pull unread, push new leads to GHL
     python -m leads list --status new
     python -m leads push --webhook URL          # push anything still 'new'
     python -m leads export leads.csv            # for a mail-merge / import into your CRM
@@ -77,10 +78,13 @@ Then schedule `run_leads.cmd` every 15 minutes (run from an admin Command Prompt
 Output accumulates in `leads.log` next to the script. Zoho Mail: switch on IMAP access in
 its settings and use an app-specific password if two-factor auth is on.
 
-**If the course already lives in GoHighLevel:** GHL workflows can start from an "Inbound
-Webhook" trigger. Point `--webhook` at that URL and each new lead becomes a GHL contact, so
-GHL's own campaigns, unsubscribe handling and tracking do the emailing instead of `send`.
-Map the JSON fields (name, email, phone, job_title, source, campaign) in the workflow.
+**GoHighLevel.** Two ways in. (A) The public API with a Private Integration token
+(`LEADS_GHL_TOKEN` + `LEADS_GHL_LOCATION`): each lead is upserted as a contact tagged
+`certrig_hazmat` and its source, with the job in a custom field; no per-run charge that I
+know of. The endpoint/header values are my reading of the v2 docs and are untested against
+the live API, so run `sink-test` first. (B) A workflow "Inbound Webhook" trigger
+(`LEADS_WEBHOOK`); that is a Premium Action billed per execution. Either way GHL's own
+campaign does the emailing, so `send` and the SMTP settings are not needed.
 
 - **Indeed's email layout is not verified.** The parser looks for labelled lines
   (`Name:`, `Phone:`, `Email:`, `Applied for:` ...) and subjects like "Jane Doe applied to

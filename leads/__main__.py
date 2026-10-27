@@ -5,7 +5,8 @@
   imap                     pull unread messages from the inbox (LEADS_IMAP_* env vars)
   csv FILE.csv             import a candidate export (columns auto-detected by header name)
   list [--status new]      show leads
-  push --webhook URL       POST every 'new' lead to your marketing tool, mark 'pushed'
+  push                     send every 'new' lead to the configured sink, mark 'pushed'
+  sink-test                send one fake contact to the sink to check the setup
   export OUT.csv           write leads to CSV
   draft ID                 print a follow-up email for one lead
   send [ID...|--status new] [--really]   email the follow-up from the support mailbox
@@ -13,7 +14,9 @@
   status ID... --to X      set status (new/pushed/contacted/enrolled/not_interested/bad)
 
 Settings are read from the environment, and from a .env file in the current directory
-(or the file named by LEADS_ENV) first. --webhook defaults to LEADS_WEBHOOK.
+(or the file named by LEADS_ENV) first. New leads go to GoHighLevel's API when
+LEADS_GHL_TOKEN + LEADS_GHL_LOCATION are set, else to LEADS_WEBHOOK / --webhook, else
+they just sit in the database.  `sink-test` sends one fake contact to check the setup.
 """
 import argparse
 import csv as csvmod
@@ -28,7 +31,7 @@ from . import fetch, outreach
 from . import send as sendmod
 from .parser import EMAIL_RE, Lead, body_text, parse_bytes, parse_file
 from .pipeline import STATUSES, Pipeline
-from .sinks import WebhookSink
+from .sinks import WebhookSink, sink_from_env
 
 
 def load_env(path=None):
@@ -196,7 +199,8 @@ def main(argv=None):
     s = sub.add_parser("ingest"); s.add_argument("files", nargs="+"); s.add_argument("--webhook")
     s = sub.add_parser("imap"); s.add_argument("--webhook"); s.add_argument("--keep-unread", action="store_true")
     sub.add_parser("list").add_argument("--status")
-    sub.add_parser("push").add_argument("--webhook", required=True)
+    sub.add_parser("push").add_argument("--webhook")
+    sub.add_parser("sink-test")
     s = sub.add_parser("export"); s.add_argument("out"); s.add_argument("--status")
     sub.add_parser("draft").add_argument("id", type=int)
     s = sub.add_parser("status"); s.add_argument("ids", nargs="+", type=int); s.add_argument("--to", required=True, choices=STATUSES)
@@ -206,15 +210,22 @@ def main(argv=None):
     load_env()
     p.set_defaults(db=os.environ.get("LEADS_DB", "leads.db"))
     a = p.parse_args(argv)
-    if getattr(a, "webhook", None) is None and a.cmd in ("ingest", "imap"):
-        a.webhook = os.environ.get("LEADS_WEBHOOK") or None
 
     if a.cmd == "parse":
         for f in a.files:
             print(json.dumps(parse_file(f, own_domains()).to_dict(), indent=2))
         return
     pipe = Pipeline(a.db)
-    hook = WebhookSink(a.webhook) if getattr(a, "webhook", None) else None
+    hook = WebhookSink(a.webhook) if getattr(a, "webhook", None) else sink_from_env(os.environ)
+    if a.cmd == "sink-test":
+        if hook is None:
+            sys.exit("no sink configured: set LEADS_GHL_TOKEN + LEADS_GHL_LOCATION, or LEADS_WEBHOOK")
+        print(f"sending a test contact via {type(hook).__name__} ...")
+        print("response:", hook.send({"name": "Test Lead", "email": "test-lead@example.com",
+                                      "phone": "+15555550100", "source": "test",
+                                      "job_title": "CDL Driver (test)", "campaign": "certrig_hazmat"}))
+        print("check GHL for a contact named 'Test Lead', then delete it.")
+        return
     if a.cmd == "ingest":
         for f in a.files:
             ingest_raw(pipe, read_raw(f), hook)
@@ -231,6 +242,8 @@ def main(argv=None):
             print(f"#{r['id']:<4} {r['status']:<14} {r['source']:<12} {r['name'][:24]:<24} "
                   f"{r['email'][:30]:<30} {r['phone']:<14} {r['job_title'][:30]}")
     elif a.cmd == "push":
+        if hook is None:
+            sys.exit("no sink configured: set LEADS_GHL_TOKEN + LEADS_GHL_LOCATION, or LEADS_WEBHOOK")
         for r in pipe.all("new"):
             hook.send(r)
             pipe.set_status([r["id"]], "pushed")

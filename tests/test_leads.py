@@ -285,3 +285,29 @@ def test_cli_csv_and_env_file(tmp_path, capsys, monkeypatch):
     main(["csv", "x.csv"])
     assert "1 added" in capsys.readouterr().out
     assert Pipeline("fromenv.db").get(1)["name"] == "Zed Zed"
+
+
+def test_ghl_sink_builds_upsert_request():
+    from leads.sinks import GhlSink, sink_from_env
+    calls = []
+    sink = GhlSink("tok", "loc123", post=lambda url, body, headers: calls.append((url, body, headers)) or {"ok": 1})
+    sink.send({"name": "Jane Q Driver", "email": "j@x.com", "phone": "", "source": "breezy",
+               "job_title": "CDL Driver", "campaign": "certrig_hazmat"})
+    url, body, headers = calls[0]
+    assert url.endswith("/contacts/upsert")
+    assert headers["Authorization"] == "Bearer tok" and headers["Version"] == "2021-07-28"
+    assert body["locationId"] == "loc123" and body["firstName"] == "Jane" and body["lastName"] == "Q Driver"
+    assert body["email"] == "j@x.com" and "phone" not in body and body["tags"] == ["certrig_hazmat", "breezy"]
+    assert body["customFields"] == [{"key": "job_applied_for", "field_value": "CDL Driver"}]
+    assert isinstance(sink_from_env({"LEADS_GHL_TOKEN": "t", "LEADS_GHL_LOCATION": "l"}), GhlSink)
+    assert sink_from_env({"LEADS_WEBHOOK": "https://h"}).url == "https://h"
+    assert sink_from_env({}) is None
+
+
+def test_cli_sink_test_without_config(tmp_path, monkeypatch, capsys):
+    import pytest
+    monkeypatch.chdir(tmp_path)
+    for k in ("LEADS_GHL_TOKEN", "LEADS_GHL_LOCATION", "LEADS_WEBHOOK"):
+        monkeypatch.delenv(k, raising=False)
+    with pytest.raises(SystemExit):
+        main(["--db", str(tmp_path / "x.db"), "sink-test"])
