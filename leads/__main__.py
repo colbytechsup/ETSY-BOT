@@ -25,6 +25,7 @@ import email.policy
 import email.utils
 import json
 import os
+import re
 import sys
 
 from . import fetch, outreach
@@ -58,49 +59,81 @@ CSV_COLUMNS = {  # lead field -> header words to look for (lowercased, in order 
     "name": ("name", "candidate", "full name"),
     "first": ("first name", "first", "firstname", "given"),
     "last": ("last name", "last", "lastname", "surname", "family"),
-    "email": ("email", "e-mail"),
-    "phone": ("phone", "mobile", "cell", "telephone"),
+    "email": ("email", "e-mail", "email_address", "email address"),
+    "phone": ("phone", "mobile", "cell", "telephone", "phone_number", "phone number"),
     "job_title": ("position", "job", "role", "applied"),
     "location": ("location", "city", "address"),
     "source": ("source", "origin", "channel"),
+    "stage": ("stage", "status"),
+    "added": ("addeddate", "added", "applied date", "created", "date"),
 }
+
+SOURCE_TAGS = (("indeed", "indeed"), ("zip", "ziprecruiter"), ("career portal", "career_portal"),
+               ("linkedin", "linkedin"), ("monster", "monster"), ("google", "google"),
+               ("craigslist", "craigslist"), ("facebook", "facebook"), ("glassdoor", "glassdoor"))
+
+
+def normalize_source(raw, default="csv"):
+    """'Indeed Organic Jobs' -> 'indeed', 'ziprecruiter' -> 'ziprecruiter', else a slug."""
+    low = (raw or "").strip().lower()
+    if not low:
+        return default
+    for frag, tag in SOURCE_TAGS:
+        if frag in low:
+            return tag
+    return re.sub(r"[^a-z0-9]+", "_", low).strip("_")[:40] or default
+
+
+def match_columns(headers):
+    """Map lead fields to CSV headers: exact header matches first, then substring matches,
+    never reusing a header (so 'address' cannot grab 'email_address')."""
+    low = {h.lower().strip().replace("_", " "): h for h in headers if h}
+    taken, cols = set(), {}
+    for field, wants in CSV_COLUMNS.items():
+        for want in wants:
+            w = want.replace("_", " ")
+            if w in low and low[w] not in taken:
+                cols[field] = low[w]; taken.add(low[w]); break
+    for field, wants in CSV_COLUMNS.items():
+        if field in cols or field == "name":
+            continue
+        for want in wants:
+            w = want.replace("_", " ")
+            hit = next((h for k, h in low.items() if w in k and h not in taken), None)
+            if hit:
+                cols[field] = hit; taken.add(hit); break
+    return cols
 
 
 def import_csv(pipe, path, default_source="csv", log=print):
     """Import a candidate export (Breezy, Indeed, a spreadsheet). Columns are matched by
     header text, so the exact export format does not matter as long as the headers are
-    recognisable. Returns (added, skipped)."""
+    recognisable. Source is normalised to a tag; stage is kept in notes. Returns (added, skipped)."""
     with open(path, newline="", encoding="utf-8-sig") as f:
         rows = list(csvmod.DictReader(f))
     if not rows:
         return 0, 0
-    headers = {h.lower().strip(): h for h in rows[0].keys() if h}
-
-    def col(field):
-        for want in CSV_COLUMNS[field]:
-            for low, orig in headers.items():
-                if low == want or (want in low and field != "name"):
-                    return orig
-        return None
-
-    cols = {f: col(f) for f in CSV_COLUMNS}
+    cols = match_columns(rows[0].keys())
     added = skipped = 0
     for r in rows:
-        get = lambda f: (r.get(cols[f]) or "").strip() if cols[f] else ""
+        get = lambda f: (r.get(cols[f]) or "").strip() if cols.get(f) else ""
         name = get("name") or (get("first") + " " + get("last")).strip()
         email_addr = get("email")
         if not EMAIL_RE.fullmatch(email_addr or ""):
             email_addr = ""
         lead = Lead(name=name, email=email_addr, phone=get("phone"), job_title=get("job_title"),
-                    location=get("location"), source=get("source") or default_source,
-                    subject=f"csv import: {os.path.basename(path)}")
+                    location=get("location"), source=normalize_source(get("source"), default_source),
+                    received=get("added"), subject=f"csv import: {os.path.basename(path)}")
         if not (lead.email or lead.phone):
             skipped += 1
             continue
-        if pipe.add(lead) is None:
+        lid = pipe.add(lead)
+        if lid is None:
             skipped += 1
         else:
             added += 1
+            if get("stage"):
+                pipe.set_status([lid], "new", note=f"breezy stage: {get('stage')}; source: {get('source')}")
     log(f"{added} added, {skipped} skipped (duplicate or no email/phone) from {path}")
     return added, skipped
 

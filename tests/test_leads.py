@@ -274,7 +274,23 @@ def test_csv_import_detects_columns(tmp_path):
     rows = pipe.all()
     assert [(r["name"], r["email"], r["job_title"], r["source"]) for r in rows] == [
         ("Ann Lee", "ann@x.com", "CDL Driver", "breezy"), ("Cat Fox", "cat@x.com", "CDL Driver", "breezy")]
-    assert rows[0]["phone"] == "555-111-2222"
+    assert rows[0]["phone"] == "555-111-2222" and "stage: Applied" in rows[0]["notes"]
+
+
+def test_csv_import_breezy_export_layout(tmp_path):
+    from leads.__main__ import import_csv, normalize_source
+    f = tmp_path / "breezy.csv"
+    f.write_text('"name","match_score","score","email_address","phone_number","address","salary","position","stage","source","sourced_by_name","addedDate","addedTime"\n'
+                 '"Pat Example","",,"pat@example.com","+1 555 010 0001","Arizona, US","","CDL-A Regional Driver","Applied","Indeed Organic Jobs","","2026-10-15","21:10"\n'
+                 '"Sam Sample","",,"sam@example.org","+15550100002","Massachusetts, US","","Furniture Driver","Contacted","ziprecruiter","","2026-10-24","12:10"\n')
+    pipe = Pipeline(str(tmp_path / "l.db"))
+    assert import_csv(pipe, str(f), "breezy", log=lambda s: None) == (2, 0)
+    r = pipe.get(1)
+    assert (r["email"], r["phone"], r["location"], r["job_title"]) == ("pat@example.com", "+1 555 010 0001", "Arizona, US", "CDL-A Regional Driver")
+    assert r["source"] == "indeed" and r["received"] == "2026-10-15" and "Indeed Organic Jobs" in r["notes"]
+    assert pipe.get(2)["source"] == "ziprecruiter"
+    assert normalize_source("Career Portal") == "career_portal" and normalize_source("jobs.transforce.com") == "jobs_transforce_com"
+    assert normalize_source("") == "csv"
 
 
 def test_cli_csv_and_env_file(tmp_path, capsys, monkeypatch):
