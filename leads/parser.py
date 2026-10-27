@@ -14,6 +14,7 @@ from html.parser import HTMLParser
 
 # Sender-domain fragment -> source name. Anything else is "email".
 SOURCES = {
+    "breezy": "breezy",  # Breezy system mail comes from support@breezy-mail.com (seen 2026-10)
     "indeed": "indeed", "ziprecruiter": "ziprecruiter", "linkedin": "linkedin",
     "craigslist": "craigslist", "facebookmail": "facebook", "glassdoor": "glassdoor",
     "monster": "monster", "careerbuilder": "careerbuilder",
@@ -21,8 +22,9 @@ SOURCES = {
 
 # Platform addresses that are never the candidate. Exact domain match, so a relay
 # subdomain (the kind a job board uses to mask a candidate's real address) still counts.
-PLATFORM_DOMAINS = {"indeed.com", "ziprecruiter.com", "linkedin.com", "craigslist.org",
-                    "facebookmail.com", "glassdoor.com", "monster.com", "careerbuilder.com"}
+PLATFORM_DOMAINS = {"breezy-mail.com", "breezy.hr", "indeed.com", "ziprecruiter.com", "linkedin.com",
+                    "craigslist.org", "facebookmail.com", "glassdoor.com", "monster.com",
+                    "careerbuilder.com"}
 NOISE_LOCALPARTS = ("noreply", "no-reply", "no_reply", "donotreply", "do-not-reply",
                     "unsubscribe", "support", "help", "privacy", "notifications", "alerts")
 

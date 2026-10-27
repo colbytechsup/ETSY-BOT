@@ -63,6 +63,13 @@ def test_direct_email_uses_sender_and_own_domain_is_ignored():
     assert lead.job_title == ""
 
 
+def test_breezy_system_mail_is_recognised():
+    text = ("Hi there,\nYour position, LOCAL CDL-A DRIVERS, was not approved.\n"
+            "Questions? support@breezy-mail.com\nView Position")
+    lead = parse_bytes(make("Breezy HR <support@breezy-mail.com>", "Your position was disapproved", text=text))
+    assert lead.source == "breezy" and lead.email == "" and lead.name == ""
+
+
 def test_subject_patterns():
     assert parse_subject("Re: FW: New application for Local Driver: Ann Lee") == ("Ann Lee", "Local Driver")
     assert parse_subject("Carlos Ruiz has applied for Tanker Driver") == ("Carlos Ruiz", "Tanker Driver")
