@@ -86,12 +86,14 @@ the live API, so run `sink-test` first. (B) A workflow "Inbound Webhook" trigger
 (`LEADS_WEBHOOK`); that is a Premium Action billed per execution. Either way GHL's own
 campaign does the emailing, so `send` and the SMTP settings are not needed.
 
-- **Indeed's email layout is not verified.** The parser looks for labelled lines
-  (`Name:`, `Phone:`, `Email:`, `Applied for:` ...) and subjects like "Jane Doe applied to
-  CDL Driver". Save a real notification as .eml (Gmail: "Show original" -> download) and run
-  `parse` on it; if a field is blank, add the label/subject shape to `leads/parser.py`.
-  Indeed may mask the candidate's real address behind a relay address; the parser keeps
-  those, but replies through them may be subject to Indeed's rules.
+- **Breezy's "X applied to Y" notification carries no email or phone** (verified on a real
+  message, Oct 2026): just the name, position, a "Title @ Employer" line and a link with the
+  candidate id. The parser records it as a placeholder; the next candidate CSV export fills
+  in the contact details on the same record, and only then is it pushed to the CRM.
+  So the export (`csv` command) is the feed that matters; the inbox is an early signal.
+- **Indeed's own email layout is not verified.** Indeed leads here arrive via Breezy anyway.
+  For other senders the parser looks for labelled lines (`Name:`, `Phone:`, ...) and subjects
+  like "Jane Doe applied to CDL Driver"; add shapes to `leads/parser.py` as you meet them.
 - **Check before marketing to applicants.** They applied for a job, not a course. Indeed's
   terms (as I understand them; verify in the current Indeed Employer terms) restrict use of
   candidate data to recruiting for the posted job. Email marketing falls under CAN-SPAM

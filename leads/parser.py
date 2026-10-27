@@ -42,8 +42,11 @@ SUBJECT_PATTERNS = [
     r"^(?P<name>[^:]+?) (?:has )?applied (?:to|for)(?: your)?(?: job)?[:\s]+(?P<job>.+)$",
     r"^(?P<name>[^:]+?) is interested in (?P<job>.+)$",
     r"^(?:you have a )?new (?:lead|inquiry|message)(?: from)?[:\-]?\s*(?P<name>.+)$",
+    r"^(?:questionnaire|assessment|document) \w+ from (?P<name>.+)$",  # Breezy follow-ups
 ]
 
+BREEZY_LINK_RE = re.compile(r"https://app\.breezy\.hr/r\?[^\"'\s]*candidate_id=([0-9a-f]+)")
+BREEZY_HEADLINE_RE = re.compile(r"^(?P<h>[^\n@]{2,80} @ [^\n]{2,80})$", re.M)
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 PHONE_RE = re.compile(r"(?<![\d-])(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}(?![\d-])")
 NAME_OK = re.compile(r"^[A-Za-z][A-Za-z' .-]{1,59}$")
@@ -62,6 +65,8 @@ class Lead:
     received: str = ""
     message_id: str = ""
     campaign: str = "certrig_hazmat"
+    external_id: str = ""  # e.g. "breezy:<candidate_id>" from a notification link
+    headline: str = ""     # e.g. "CDL Driver @ Sea Glass Trucking" (Breezy notification)
 
     def to_dict(self):
         return asdict(self)
@@ -71,6 +76,8 @@ class Lead:
             return "email:" + self.email.lower()
         if self.phone:
             return "phone:" + digits(self.phone)
+        if self.external_id:
+            return "ext:" + self.external_id
         if self.message_id:
             return "msgid:" + self.message_id
         return "subj:" + (self.name + "|" + self.subject).lower()
@@ -165,11 +172,26 @@ def pick_email(text, sender_addr, own_domains=()):
     return ""
 
 
+def raw_html(msg):
+    part = msg.get_body(preferencelist=("html",))
+    return part.get_content() if part is not None else ""
+
+
 def parse_message(msg, own_domains=()):
     """`msg` is an email.message.EmailMessage (policy=email.policy.default)."""
     sender_name, sender_addr = email.utils.parseaddr(msg.get("From", ""))
     subject = str(msg.get("Subject", "")).strip()
     text = body_text(msg)
+    external_id, headline = "", ""
+    if "breezy" in sender_addr.lower():
+        # Breezy's "X applied to Y" notification (seen 2026-10): no email/phone in it, just the
+        # name, position, a "Title @ Employer" line and a review link carrying candidate_id.
+        m = BREEZY_LINK_RE.search(html.unescape(raw_html(msg)))
+        if m:
+            external_id = "breezy:" + m.group(1)
+        m = BREEZY_HEADLINE_RE.search(text)
+        if m:
+            headline = m.group("h").strip()
     subj_name, subj_job = parse_subject(subject)
 
     name = _label_value(text, "name") or subj_name
@@ -192,6 +214,7 @@ def parse_message(msg, own_domains=()):
         location=_label_value(text, "location")[:120],
         subject=subject[:200], sender=sender_addr,
         received=str(msg.get("Date", "")), message_id=str(msg.get("Message-ID", "")).strip(),
+        external_id=external_id, headline=headline,
     )
 
 

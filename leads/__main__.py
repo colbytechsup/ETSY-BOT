@@ -133,7 +133,8 @@ def import_csv(pipe, path, default_source="csv", log=print):
         else:
             added += 1
             if get("stage"):
-                pipe.set_status([lid], "new", note=f"breezy stage: {get('stage')}; source: {get('source')}")
+                row = pipe.get(lid)
+                pipe.set_status([lid], row["status"], note=(row["notes"] + f" breezy stage: {get('stage')}; source: {get('source')}").strip())
     log(f"{added} added, {skipped} skipped (duplicate or no email/phone) from {path}")
     return added, skipped
 
@@ -165,12 +166,15 @@ def ingest_raw(pipe, raw, webhook=None, log=print):
     if handle_opt_out(pipe, raw, log):
         return None
     lead = parse_bytes(raw, own_domains())
+    if not (lead.name or lead.email or lead.phone):
+        log(f"skip  nothing identifying in: {lead.subject[:60]}")
+        return None
     lid = pipe.add(lead)
     if lid is None:
         log(f"dup   {lead.name or lead.email or lead.subject}")
         return None
-    log(f"new   #{lid} {lead.name} <{lead.email}> {lead.phone} [{lead.source}]")
-    if webhook:
+    log(f"new   #{lid} {lead.name} <{lead.email}> {lead.phone} [{lead.source}] {lead.headline}")
+    if webhook and (lead.email or lead.phone):
         webhook.send(pipe.get(lid))
         pipe.set_status([lid], "pushed")
     return lid
@@ -277,7 +281,7 @@ def main(argv=None):
     elif a.cmd == "push":
         if hook is None:
             sys.exit("no sink configured: set LEADS_GHL_TOKEN + LEADS_GHL_LOCATION, or LEADS_WEBHOOK")
-        for r in pipe.all("new"):
+        for r in pipe.contactable("new"):
             hook.send(r)
             pipe.set_status([r["id"]], "pushed")
             print(f"pushed #{r['id']} {r['name']}")

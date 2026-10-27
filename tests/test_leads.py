@@ -70,6 +70,57 @@ def test_breezy_system_mail_is_recognised():
     assert lead.source == "breezy" and lead.email == "" and lead.name == ""
 
 
+BREEZY_APPLIED_HTML = """<html><body><table><tr><td><p>You have a new candidate for the
+<b>Local CDLA, Home Daily - Target Account (Sacramento, CA)</b> position.</p></td></tr>
+<tr><td><h4>Pat Example</h4><span>CDL Driver @ Example Trucking</span></td></tr>
+<tr><td><a href="https://app.breezy.hr/r?company_id=0a5c&amp;position_id=4900&amp;candidate_id=2aeac3c8c17f">Review Candidate</a></td></tr>
+</table><em>Copyright &copy; Breezy HR, Inc.</em></body></html>"""
+
+
+def test_breezy_applied_notification_has_no_contact_but_ids():
+    raw = make("Breezy HR <no-reply@breezy-mail.com>",
+               "Pat Example applied to Local CDLA, Home Daily - Target Account (Sacramento, CA)", html=BREEZY_APPLIED_HTML)
+    lead = parse_bytes(raw)
+    assert lead.name == "Pat Example" and lead.email == "" and lead.phone == ""
+    assert lead.job_title == "Local CDLA, Home Daily - Target Account (Sacramento, CA)"
+    assert lead.external_id == "breezy:2aeac3c8c17f" and lead.headline == "CDL Driver @ Example Trucking"
+    assert lead.dedup_key() == "ext:breezy:2aeac3c8c17f"
+    q = parse_bytes(make("Breezy HR <x@co.breezy-mail.com>", "Questionnaire response from Pat Example", text="Pat Example on Hazmat CDL-A Driver has completed the questionnaire."))
+    assert q.name == "Pat Example"
+
+
+def test_placeholder_is_filled_by_export_and_duplicates_ignored(tmp_path):
+    from leads.__main__ import import_csv
+    pipe = Pipeline(str(tmp_path / "l.db"))
+    raw = make("Breezy HR <no-reply@breezy-mail.com>", "Pat Example applied to Local CDLA", html=BREEZY_APPLIED_HTML)
+    sent = []
+    hook = WebhookSink("u", post=lambda u, p, h: sent.append(p) or 200)
+    assert ingest_raw(pipe, raw, hook, log=lambda s: None) == 1
+    assert sent == [] and pipe.get(1)["status"] == "new"  # nothing to push yet: no contact details
+    f = tmp_path / "export.csv"
+    f.write_text("name,email_address,phone_number,position,stage,source\n"
+                 "Pat Example,pat@example.com,+1 555 010 0003,Local CDLA,Applied,Indeed Apply\n")
+    assert import_csv(pipe, str(f), "breezy", log=lambda s: None) == (1, 0)
+    rows = pipe.all()
+    assert len(rows) == 1
+    r = rows[0]
+    assert (r["email"], r["phone"], r["source"], r["external_id"]) == ("pat@example.com", "+1 555 010 0003", "indeed", "breezy:2aeac3c8c17f")
+    assert "contact filled from" in r["notes"] and "breezy stage: Applied" in r["notes"]
+    assert r["job_title"] == "Local CDLA"  # the notification arrived first; its title is kept
+    assert ingest_raw(pipe, raw, hook, log=lambda s: None) is None  # same notification again
+    # a later contact-less notification for a known name is a duplicate, not a new row
+    q = make("Breezy HR <x@breezy-mail.com>", "Questionnaire response from Pat Example", text="Pat Example has completed it.")
+    assert ingest_raw(pipe, q, hook, log=lambda s: None) is None and len(pipe.all()) == 1
+    assert [x["id"] for x in pipe.contactable("new")] == [1]
+
+
+def test_ingest_skips_unidentifiable_mail(tmp_path):
+    pipe = Pipeline(str(tmp_path / "l.db"))
+    logs = []
+    raw = make("Breezy HR <no-reply@breezy-mail.com>", "Weekly digest", text="Nothing useful here.")
+    assert ingest_raw(pipe, raw, log=logs.append) is None and logs[0].startswith("skip") and pipe.all() == []
+
+
 def test_subject_patterns():
     assert parse_subject("Re: FW: New application for Local Driver: Ann Lee") == ("Ann Lee", "Local Driver")
     assert parse_subject("Carlos Ruiz has applied for Tanker Driver") == ("Carlos Ruiz", "Tanker Driver")
