@@ -20,8 +20,8 @@ def enrich(lead_dict):
     payload = {k: v for k, v in lead_dict.items() if k not in ("dedup_key", "added")}
     first, _, last = (payload.get("name") or "").strip().partition(" ")
     payload["first_name"], payload["last_name"] = first, last.strip()
-    company = re.sub(r"[^a-z0-9]+", "_", (payload.get("company") or "").lower()).strip("_")
-    payload["tags"] = [t for t in (payload.get("campaign"), payload.get("source"), company) if t]
+    companies = [re.sub(r"[^a-z0-9]+", "_", c.lower()).strip("_") for c in (payload.get("company") or "").split(",")]
+    payload["tags"] = [t for t in [payload.get("campaign"), payload.get("source"), *companies] if t]
     return payload
 
 

@@ -60,6 +60,14 @@ class Pipeline:
                 return ph[0]
         elif self._known_by_name(lead):
             return None
+        existing = self.db.execute("SELECT id, company FROM leads WHERE dedup_key=?", (lead.dedup_key(),)).fetchone()
+        if existing:
+            # Same person applied through another company: remember both (each becomes a tag).
+            had = [c.strip() for c in (existing[1] or "").split(",") if c.strip()]
+            if lead.company and lead.company not in had:
+                self.db.execute("UPDATE leads SET company=? WHERE id=?", (", ".join(had + [lead.company]), existing[0]))
+                self.db.commit()
+            return None
         cur = self.db.execute(
             "INSERT OR IGNORE INTO leads(dedup_key, name, email, phone, source, job_title, location,"
             " subject, sender, received, message_id, campaign, added, external_id, headline, company)"

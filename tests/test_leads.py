@@ -341,6 +341,11 @@ def test_csv_import_breezy_export_layout(tmp_path):
     assert r["company"] == "Small Potato Trucking"
     from leads.sinks import enrich
     assert enrich(r)["tags"] == ["certrig_hazmat", "indeed", "small_potato_trucking"]
+    # same person exported from a second company: no new row, both companies kept as tags
+    assert import_csv(pipe, str(f), "breezy", log=lambda s: None, company="Salt City") == (0, 2)
+    r = pipe.get(1)
+    assert r["company"] == "Small Potato Trucking, Salt City" and len(pipe.all()) == 2
+    assert enrich(r)["tags"] == ["certrig_hazmat", "indeed", "small_potato_trucking", "salt_city"]
     assert r["source"] == "indeed" and r["received"] == "2026-10-15" and "Indeed Organic Jobs" in r["notes"]
     assert pipe.get(2)["source"] == "ziprecruiter"
     assert normalize_source("Career Portal") == "career_portal" and normalize_source("jobs.transforce.com") == "jobs_transforce_com"
