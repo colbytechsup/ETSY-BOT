@@ -16,8 +16,11 @@ Status 2026-10-27. Code is on branch `claude/loving-cerf-labso0` (PR #1). Tests 
   contact with tags + custom field. GHL workflow "Contact tag added: certrig_hazmat" published.
 - Work PC: Python 3.14, Git, repo cloned at C:\Users\powerhouse\ETSY-BOT on the branch.
 
+- Local database loaded with all seven exports: 4,044 contactable leads, status 'new'.
+
 ## Needs a human (in order of value)
-3. **First real load**: export all candidates from Breezy (Candidates > tick all > More >
+3. **Push to GHL** (after the legal go-ahead): `python -m leads push --limit 300` once a day
+   until it reports 0 still waiting. Original load notes:: export all candidates from Breezy (Candidates > tick all > More >
    Export Candidates), then, once per company export:
    `python -m leads csv <file>.csv --source breezy --company "Small Potato Trucking"`
    and then `python -m leads push --limit 300` once a day until "0 still waiting" (a fresh
