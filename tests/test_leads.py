@@ -422,7 +422,7 @@ def test_push_limit_and_resume(tmp_path, monkeypatch, capsys):
     monkeypatch.delenv("LEADS_GHL_TOKEN", raising=False)
     sent = []
     import leads.sinks as sinks
-    monkeypatch.setattr(sinks, "post_json", lambda url, payload, headers=None: sent.append(payload["email"]) or 200)
+    monkeypatch.setattr(sinks.WebhookSink, "send", lambda self, lead: sent.append(lead["email"]) or 200)
     db = str(tmp_path / "p.db")
     pipe = Pipeline(db)
     for i in range(5):
