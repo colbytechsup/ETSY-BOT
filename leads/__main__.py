@@ -33,7 +33,7 @@ from . import fetch, outreach
 from . import send as sendmod
 from .parser import EMAIL_RE, Lead, body_text, parse_bytes, parse_file
 from .pipeline import STATUSES, Pipeline
-from .sinks import WebhookSink, sink_from_env
+from .sinks import GhlSink, SinkError, WebhookSink, sink_from_env
 
 
 def load_env(path=None):
@@ -260,9 +260,16 @@ def main(argv=None):
         if hook is None:
             sys.exit("no sink configured: set LEADS_GHL_TOKEN + LEADS_GHL_LOCATION, or LEADS_WEBHOOK")
         print(f"sending a test contact via {type(hook).__name__} ...")
-        print("response:", hook.send({"name": "Test Lead", "email": "test-lead@example.com",
-                                      "phone": "+15555550100", "source": "test",
-                                      "job_title": "CDL Driver (test)", "campaign": "certrig_hazmat"}))
+        if isinstance(hook, GhlSink):
+            print(f"  location: {hook.location}   token: {hook.token[:6]}...{hook.token[-4:]} ({len(hook.token)} chars)   version: {hook.version}")
+        try:
+            print("response:", json.dumps(hook.send({"name": "Test Lead", "email": "test-lead@example.com",
+                                                     "phone": "+15555550100", "source": "test",
+                                                     "job_title": "CDL Driver (test)", "campaign": "certrig_hazmat"}), indent=1)[:1500])
+        except SinkError as e:
+            sys.exit(f"FAILED: {e}\n\nCommon GHL causes: 403 = token lacks the contacts.write scope or belongs to a "
+                     "different sub-account than LEADS_GHL_LOCATION; 401 = bad token or Version header; "
+                     "422 = a field GHL did not like (see the message above).")
         print("check GHL for a contact named 'Test Lead', then delete it.")
         return
     if a.cmd == "ingest":

@@ -3,15 +3,28 @@
 The payload is the Lead fields plus `campaign`; map them on the receiving side."""
 import json
 import re
+import urllib.error
 import urllib.request
+
+
+class SinkError(RuntimeError):
+    """HTTP error from the CRM, with the response body so the reason is visible."""
 
 
 def post_json(url, payload, headers=None):
     body = json.dumps(payload).encode()
     req = urllib.request.Request(url, data=body, method="POST",
                                  headers={"Content-Type": "application/json", **(headers or {})})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return r.status
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            text = r.read().decode("utf-8", "replace")
+            try:
+                return json.loads(text) if text else r.status
+            except ValueError:
+                return text[:500]
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", "replace")[:1000]
+        raise SinkError(f"HTTP {e.code} from {url}\n{detail}") from None
 
 
 def enrich(lead_dict):

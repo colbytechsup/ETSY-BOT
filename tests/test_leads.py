@@ -386,3 +386,15 @@ def test_cli_sink_test_without_config(tmp_path, monkeypatch, capsys):
         monkeypatch.delenv(k, raising=False)
     with pytest.raises(SystemExit):
         main(["--db", str(tmp_path / "x.db"), "sink-test"])
+
+
+def test_post_json_surfaces_error_body(monkeypatch):
+    import io, urllib.error, urllib.request
+    import pytest
+    from leads.sinks import SinkError, post_json
+    def boom(req, timeout=0):
+        raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, io.BytesIO(b'{"message":"no access to location"}'))
+    monkeypatch.setattr(urllib.request, "urlopen", boom)
+    with pytest.raises(SinkError) as e:
+        post_json("https://x/contacts/upsert", {"a": 1})
+    assert "HTTP 403" in str(e.value) and "no access to location" in str(e.value)
