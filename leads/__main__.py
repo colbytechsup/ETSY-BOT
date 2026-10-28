@@ -6,7 +6,7 @@
   csv FILE.csv [--company "Name"]  import a candidate export (columns auto-detected); the
                            company becomes a tag in the CRM
   list [--status new]      show leads
-  push                     send every 'new' lead to the configured sink, mark 'pushed'
+  push [--limit N]         send 'new' leads to the configured sink, mark 'pushed' (N per run)
   sink-test                send one fake contact to the sink to check the setup
   export OUT.csv           write leads to CSV
   draft ID                 print a follow-up email for one lead
@@ -237,7 +237,8 @@ def main(argv=None):
     s = sub.add_parser("ingest"); s.add_argument("files", nargs="+"); s.add_argument("--webhook")
     s = sub.add_parser("imap"); s.add_argument("--webhook"); s.add_argument("--keep-unread", action="store_true")
     sub.add_parser("list").add_argument("--status")
-    sub.add_parser("push").add_argument("--webhook")
+    s = sub.add_parser("push"); s.add_argument("--webhook")
+    s.add_argument("--limit", type=int, default=0, help="send at most N leads this run (0 = all)")
     sub.add_parser("sink-test")
     s = sub.add_parser("export"); s.add_argument("out"); s.add_argument("--status")
     sub.add_parser("draft").add_argument("id", type=int)
@@ -290,10 +291,16 @@ def main(argv=None):
     elif a.cmd == "push":
         if hook is None:
             sys.exit("no sink configured: set LEADS_GHL_TOKEN + LEADS_GHL_LOCATION, or LEADS_WEBHOOK")
-        for r in pipe.contactable("new"):
-            hook.send(r)
+        todo = pipe.contactable("new")
+        batch = todo[:a.limit] if a.limit else todo
+        for r in batch:
+            try:
+                hook.send(r)
+            except SinkError as e:
+                sys.exit(f"stopped at #{r['id']} {r['name']}: {e}\n{len(todo) - batch.index(r)} still 'new'; rerun push to continue.")
             pipe.set_status([r["id"]], "pushed")
-            print(f"pushed #{r['id']} {r['name']}")
+            print(f"pushed #{r['id']} {r['name']} <{r['email']}>")
+        print(f"{len(batch)} pushed this run, {len(todo) - len(batch)} still waiting as 'new'.")
     elif a.cmd == "export":
         print(f"{pipe.export_csv(a.out, a.status)} row(s) -> {a.out}")
     elif a.cmd == "draft":

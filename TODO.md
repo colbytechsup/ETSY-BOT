@@ -11,17 +11,18 @@ Status 2026-10-27. Code is on branch `claude/loving-cerf-labso0` (PR #1). Tests 
   that the export fills in (same name -> same record).
 - Zoho Mail is not needed; its free plan has no IMAP. Don't pay for it for this.
 
+## Done 2026-10-28
+- GHL Private Integration token + Location ID in `.env` on the work PC; `sink-test` created a
+  contact with tags + custom field. GHL workflow "Contact tag added: certrig_hazmat" published.
+- Work PC: Python 3.14, Git, repo cloned at C:\Users\powerhouse\ETSY-BOT on the branch.
+
 ## Needs a human (in order of value)
-1. **GHL Private Integration token + Location ID** -> `.env` on the work PC, then
-   `python -m leads sink-test`. Paste the output here. (Settings > Private Integrations,
-   scope contacts.write; Settings > Business Profile for the Location ID.)
-2. **Work PC setup**: Python 3 (Add to PATH), Git, clone repo, `git checkout claude/loving-cerf-labso0`,
-   `copy certrig.env.example .env`, fill values.
 3. **First real load**: export all candidates from Breezy (Candidates > tick all > More >
    Export Candidates), then, once per company export:
    `python -m leads csv <file>.csv --source breezy --company "Small Potato Trucking"`
-   and finally `python -m leads push`. Repeat the exports weekly, or daily. Duplicates are
-   ignored automatically; a person seen in two companies gets both as tags.
+   and then `python -m leads push --limit 300` once a day until "0 still waiting" (a fresh
+   sending domain should not blast 4,000 emails in one go). Repeat the exports weekly, or
+   daily. Duplicates are ignored automatically; a person seen in two companies gets both as tags.
    Exports so far (2026-10-27), 4,044 unique people in total (94 applied to hazmat roles):
    - Small Potato Trucking (471 rows)     --company "Small Potato Trucking"
    - Herman N Logistics (623 rows)        --company "Herman N Logistics"

@@ -414,3 +414,21 @@ def test_post_json_sends_user_agent(monkeypatch):
     monkeypatch.setattr(urllib.request, "urlopen", fake)
     assert post_json("https://x/y", {"a": 1}, {"Authorization": "Bearer t"}) == {"ok": True}
     assert seen["user-agent"] == USER_AGENT and seen["authorization"] == "Bearer t"
+
+
+def test_push_limit_and_resume(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LEADS_WEBHOOK", "https://hook.example/x")
+    monkeypatch.delenv("LEADS_GHL_TOKEN", raising=False)
+    sent = []
+    import leads.sinks as sinks
+    monkeypatch.setattr(sinks, "post_json", lambda url, payload, headers=None: sent.append(payload["email"]) or 200)
+    db = str(tmp_path / "p.db")
+    pipe = Pipeline(db)
+    for i in range(5):
+        pipe.add(Lead(name=f"P{i} X", email=f"p{i}@example.com"))
+    pipe.add(Lead(name="No Contact"))
+    main(["--db", db, "push", "--limit", "2"])
+    assert sent == ["p0@example.com", "p1@example.com"] and "3 still waiting" in capsys.readouterr().out
+    main(["--db", db, "push"])
+    assert len(sent) == 5 and len(Pipeline(db).all("pushed")) == 5
