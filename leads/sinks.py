@@ -11,10 +11,14 @@ class SinkError(RuntimeError):
     """HTTP error from the CRM, with the response body so the reason is visible."""
 
 
+USER_AGENT = "certrig-leads/1.0 (+https://certrig.com)"  # Cloudflare in front of GHL blocks Python's default
+
+
 def post_json(url, payload, headers=None):
     body = json.dumps(payload).encode()
     req = urllib.request.Request(url, data=body, method="POST",
-                                 headers={"Content-Type": "application/json", **(headers or {})})
+                                 headers={"Content-Type": "application/json", "User-Agent": USER_AGENT,
+                                          **(headers or {})})
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             text = r.read().decode("utf-8", "replace")

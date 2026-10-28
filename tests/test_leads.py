@@ -398,3 +398,19 @@ def test_post_json_surfaces_error_body(monkeypatch):
     with pytest.raises(SinkError) as e:
         post_json("https://x/contacts/upsert", {"a": 1})
     assert "HTTP 403" in str(e.value) and "no access to location" in str(e.value)
+
+
+def test_post_json_sends_user_agent(monkeypatch):
+    import io, urllib.request
+    from leads.sinks import USER_AGENT, post_json
+    seen = {}
+    class R(io.BytesIO):
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+    def fake(req, timeout=0):
+        seen.update({k.lower(): v for k, v in req.header_items()})
+        return R(b'{"ok":true}')
+    monkeypatch.setattr(urllib.request, "urlopen", fake)
+    assert post_json("https://x/y", {"a": 1}, {"Authorization": "Bearer t"}) == {"ok": True}
+    assert seen["user-agent"] == USER_AGENT and seen["authorization"] == "Bearer t"
