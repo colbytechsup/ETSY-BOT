@@ -8,7 +8,28 @@ the review-gating question with evidence.
 
 Coastal Children's Learning Center Preschool, Costa Mesa CA: 4.7 stars, 16 Google reviews,
 about 3 reviews in the last 12 months, 5 rating-only reviews, 310+ Facebook followers.
-Competitor counts still to be gathered. See `toddr-pilot-gathering-checklist.md`.
+Competitors, from Todd's screenshots taken 2026-10-30 (Google unless noted):
+
+| Business | Google rating | Google reviews | Yelp | Note |
+|---|---|---|---|---|
+| **Coastal Children's Learning Center** | 4.7 | 16 | not checked | ~3 reviews in last 12 months |
+| Nobis Preschool | 4.4 | 19 | | newest review 2 months ago |
+| Heritage Montessori (Costa Mesa) | not visible | not visible | 4.5 (47) | Google shows "Posting is currently turned off" on its reviews |
+| Kiddie Academy of Costa Mesa (national franchise) | 4.6 | 11 | | newest visible review ~1 year ago |
+| Gaowa Montessori School | no Google listing found | | ~27 (approx.) | Yelp only |
+
+What this says: Coastal is **not** behind on Google. It has the highest rating in the set and
+the second-highest count, and the one true chain (Kiddie Academy) has only 11. The gap is on
+Yelp, where Heritage and Gaowa are strong, and Yelp prohibits soliciting reviews, so that gap
+cannot be closed with Toddr.ai. The honest pilot story is therefore "from mid-pack to the clear
+number one in Costa Mesa preschool search", which needs roughly 20 to 30 new Google reviews.
+With 39 licensed seats (state facility record shows capacity 39) and parents who are already
+positive, that is reachable in 60 to 90 days if the request flow works.
+
+The "Posting is currently turned off" notice on Heritage's profile means Google has restricted
+new reviews on that business. I am not certain of the reason in their case; Google does this
+for suspected policy problems and sometimes for other reasons. It is a live local example of
+why the gating decision matters.
 
 ## Before day 0
 
