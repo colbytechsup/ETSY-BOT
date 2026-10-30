@@ -1,4 +1,4 @@
-# Toddr.ai Launch Gameplan (draft v1)
+# Toddr.ai Launch Gameplan (draft v2)
 
 Owner: Todd. Scope: launch QA, stress testing, proof of operation, and marketing for Toddr.ai.
 Date: 2026-10-30.
@@ -144,10 +144,11 @@ Marketing without proof is just claims. Build the proof while testing.
 
 ### Positioning (recommendation)
 
-- **Who:** owner-operated local service businesses with 1 to 20 employees that are good at the
-  work and bad at asking for reviews: plumbing, HVAC, electrical, towing, auto repair, trucking and
-  hauling, landscaping, roofing, pressure washing, mobile detailing. Stay out of cafes and salons
-  for now; the homepage already says "blue-collar", so commit to it.
+- **Who (updated):** family-owned and locally owned businesses that are losing on Google to
+  larger chains or franchises: preschools and daycares, independent auto shops vs. chains,
+  local gyms, family restaurants, trades. The common thread is "we are better and have fewer
+  reviews". The homepage currently says "blue-collar"; broaden that to "local, family-owned"
+  or you will scare off the preschool and restaurant owners.
 - **Promise:** "Your customers become your marketing. Automatically." Keep it; it is good.
 - **Why us vs. the big names:** Podium, Birdeye, NiceJob, and GatherUp exist in this space and are
   established (VERIFY current pricing before quoting it). The opening you have is simpler setup,
@@ -225,12 +226,51 @@ Marketing without proof is just claims. Build the proof while testing.
   Review the metrics every Friday and move budget toward the channel with the lowest cost
   per paying customer.
 
-## 8. Open questions for you
+## 8. Answers so far (2026-10-30) and what they change
 
-1. Is there a Toddr.ai codebase or staging site I can be given access to? Without it, sections
-   3 and 4 stay as plans.
-2. Are Emma Wilson and Jen M. real customers?
-3. What is the actual review flow: does every customer get the Google link, or only happy ones?
-4. What is the pricing, or what do you want it to be?
-5. Which trade and which metro do you want to start outreach in?
-6. Who owns the website edits (you, or Hesper IT Labs)?
+| Question | Answer | Consequence |
+|---|---|---|
+| Real testimonials? | No. Emma and Jen videos are AI-generated. | Remove before any marketing. See `toddr-website-fixes.md`. |
+| Review flow | Customer gets a "how was your experience" link; happy ones get the Google link, unhappy ones go elsewhere. | This is review gating. See section 9. It is the first thing the pilot must test. |
+| Pricing | Decide after testing. | Launch with a "free for founding customers" offer instead of a price. |
+| First business | Todd's mom's preschool. | Pilot script in `toddr-preschool-pilot.md`. |
+| Target market | Family / locally owned businesses losing to larger chains on Google. | Positioning updated below. Trades are now one segment, not the only one. |
+| Instagram funny-reviews account | Yes, one of the marketing ideas. | Plan in `toddr-instagram-funny-reviews.md`. |
+| Website edits | Owned by Todd. | Punch list is actionable now. |
+
+Still needed: the Toddr.ai app URL and a login, the preschool's Google Business Profile name,
+how customers get entered (manual, CSV, integration), and the SMS sending number. Also, allowing
+`toddr.ai` in this session's network settings would let me audit the live site directly.
+
+## 9. The review flow is review gating. Decide this before the pilot goes public.
+
+What you described (pre-screen with "how was your experience", then route happy customers to
+Google and unhappy ones elsewhere) is the textbook definition of review gating.
+
+- **Google's Business Profile guidelines** say, as I recall the wording, not to "discourage or
+  prohibit negative reviews or selectively solicit positive reviews from customers." VERIFY the
+  exact current text at Google's Business Profile review policy page before relying on my wording,
+  but I am confident the rule exists. Google has removed reviews and suspended profiles over it.
+  The risk lands on the client's business, not on Toddr.ai, which is worse for you: a preschool
+  whose Google profile gets suspended is a very bad first case study.
+- **FTC.** The 2023 update to the FTC Endorsement Guides discusses soliciting reviews only from
+  customers likely to be positive as potentially deceptive. I am not certain of the exact scope;
+  verify at ftc.gov. The 2024 FTC rule on fake reviews is a separate, firmer rule aimed mainly at
+  fabricated reviews and testimonials, which is why the AI videos must come down.
+- **Yelp** prohibits asking for reviews at all. Keep Yelp out of the product.
+
+**Compliant alternative that keeps most of the product.** Ask every customer the same thing and
+show every customer the Google link. The sentiment step moves *after* the review exists:
+
+1. Message: "How did we do? Leave us a Google review here [link]. If something went wrong, tell
+   us directly here [private link] and the owner will call you." Both links to everyone.
+2. Sentiment detection decides which *public* reviews get turned into social posts and videos
+   (that is just choosing what to feature, which is fine) and flags negatives for a fast reply.
+3. AI follow-up reminders go to everyone who has not clicked either link.
+
+This loses the "filter before Google" step, which is the part the website currently sells as
+"only shares positive reviews". The honest version of that claim is "only *features* your best
+reviews on social media", which is still a strong pitch.
+
+If you decide to keep gating anyway, that is your call, but the pilot on your mom's preschool
+should then be run with the understanding that it is her Google profile at risk.
