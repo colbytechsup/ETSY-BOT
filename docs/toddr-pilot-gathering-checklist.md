@@ -139,3 +139,93 @@ decide whether texts and posts will work at scale at all.
 
 Today: steps 1, 2, 3, 7. Tomorrow: steps 4, 5, 6. This week: step 8.
 Nothing goes to parents until step 4 is clean and the gating decision is made.
+
+---
+
+# Update 2026-10-30 (evening): what we learned and the next instructions
+
+Learned:
+- The app is called **ToddR.ai**. Todd has created an owner account. The app asks to "connect a
+  business account" before it does anything.
+- Todd's **dad built the app**, not Hesper IT Labs (they did the website). So the access and
+  technical questions go to him, not to an agency.
+- Nobody knows who is posting daily to the school's Google profile. Not Mom, not ToddR.
+
+## A. Questions for Dad (send as a list, answers can be rough)
+
+1. Is the school's Google profile (Coastal Children's Learning Center Preschool) connected to
+   ToddR in any account of yours? Are the daily Google posts and the February review replies
+   from ToddR?
+2. Where does the code live (GitHub? a folder on your machine?) and can you give read access
+   to a reviewer?
+3. Is there a test/staging version where messages do not really send?
+4. What sends the texts (Twilio? something else) and is the number registered for A2P 10DLC?
+5. What sends the emails?
+6. Which AI service writes the replies, posts and sentiment scores?
+7. Has the Facebook/Instagram app passed Meta App Review for posting to Pages and Instagram,
+   or is it still in development mode (works only for test users)?
+8. The "how was your experience" pre-screen: is it a setting that can be turned off per
+   business, or is it hard-wired?
+9. Does the Google connection ask for the "manage your Business Profile" permission, and does
+   ToddR ever post *reviews* or only *updates*?
+10. Where do the review requests and the "somewhere else" negative-feedback path actually go
+    (what domain is the link on)?
+
+## B. Find out who has access to the school's Google profile (Mom does this, 5 minutes)
+
+1. On a computer, sign in to Google with the account that owns the school's profile and go to
+   business.google.com (or search the school name on Google while signed in; a "Your business
+   on Google" panel appears).
+2. Open the three-dot menu or the profile settings, then **Business Profile settings**, then
+   **People and access** (older interface: **Managers**). Screenshot the list. Every name there
+   is someone who can post and reply as the school.
+3. Also check **Linked accounts** or **Connected apps** in the same settings area, if present,
+   and screenshot it.
+4. Remove anyone nobody recognizes. Keep Dad if he is there and he confirms it is him.
+5. While there, **add Todd as a Manager** (Add, enter Todd's Gmail, role Manager). Then Todd can
+   connect ToddR to the profile with his own Google login instead of sharing Mom's password.
+
+Exact menu names move around in Google's interface; if a label is not where I said, it is in
+the same settings area under a similar name. I cannot see the current interface from here.
+
+## C. Connect the business account in ToddR (Todd, after B.5)
+
+1. In ToddR, tap "connect a business account". It should ask you to sign in with Google and
+   pick a business. Sign in with the Gmail that Mom added as Manager, pick the school.
+2. **Screenshot the Google permission screen before you tap Allow.** The list of permissions it
+   asks for is one of the things I need to review.
+3. If it also asks for Facebook or Instagram, skip those for now. Google first.
+4. If it asks to connect anything you do not recognize, stop and screenshot it.
+
+## D. Send one request to yourself (Todd, after C)
+
+I have not seen the app, so these are the likely steps; if a screen looks different, screenshot
+it and tell me.
+
+1. Find the place to add a customer (likely a "Customers", "Contacts" or "+" button). Add
+   yourself: your name, your cell, your email.
+2. Find the action that sends a review request (likely "Send request", "Request review" or an
+   automatic send right after adding). Trigger it.
+3. Screenshot the text when it arrives. I need the sender number, the full wording, and the
+   time gap from sending.
+4. Long-press the link, "Copy link", paste it to me.
+5. Tap the link. Screenshot every screen. If it asks how your experience was, answer
+   **negatively** first and screenshot where you end up. Then open the link again (or send a
+   second request) and answer **positively**. Screenshot that path too, up to and including the
+   Google review screen. Do not actually submit a review of the school from your own account.
+6. Reply STOP to the text. Screenshot the response, if any.
+7. Add a second record for yourself with a different email (or a family member who agrees) and
+   do not click. Tell me when the reminder arrives and what it says.
+
+## E. Consent paragraph (Mom, 5 minutes)
+
+Find the enrollment packet or parent handbook. Look for any line about the school contacting
+parents by phone, text, or email (often near the emergency contact section or a
+"communications" line). Photograph it. If there is nothing, say so and I will draft a one-line
+opt-in text to send parents before any review requests.
+
+## F. Still open
+
+- Allow `toddr.ai` in this session's network settings so I can audit the website and the link
+  from D.4. Steps: https://code.claude.com/docs/en/cloud-environments#network-access
+- Instagram account type (Settings, Account type) and who is Admin on the Facebook Page.
