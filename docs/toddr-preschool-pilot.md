@@ -4,6 +4,12 @@ Purpose: first real-world run of the product on a business we own, to (a) confir
 works, (b) find bugs, (c) produce a before/after case study with real numbers, and (d) settle
 the review-gating question with evidence.
 
+## Day-0 baseline (recorded 2026-10-30 from a Google search paste)
+
+Coastal Children's Learning Center Preschool, Costa Mesa CA: 4.7 stars, 16 Google reviews,
+about 3 reviews in the last 12 months, 5 rating-only reviews, 310+ Facebook followers.
+Competitor counts still to be gathered. See `toddr-pilot-gathering-checklist.md`.
+
 ## Before day 0
 
 - [ ] **Baseline screenshot** of the preschool's Google Business Profile: review count, star rating,
