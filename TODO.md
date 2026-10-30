@@ -19,8 +19,12 @@ Status 2026-10-27. Code is on branch `claude/loving-cerf-labso0` (PR #1). Tests 
 - Local database loaded with all seven exports: 4,044 contactable leads, status 'new'.
 
 ## Needs a human (in order of value)
-3. **Push to GHL** (after the legal go-ahead): `python -m leads push --limit 300` once a day
-   until it reports 0 still waiting. Original load notes:: export all candidates from Breezy (Candidates > tick all > More >
+3. **Push to GHL: HOLD until the course is 100% complete** (owner's decision, 2026-10-30).
+   Nothing is sent to GHL and no one is emailed until then. When ready:
+   `python -m leads push --limit 300` once a day until it reports 0 still waiting.
+   Before the first push: re-export Breezy for each company and re-run the csv commands so
+   the newest applicants are included; confirm the GHL workflow is still published and its
+   email has the final pricing / demo details; delete the "Test Lead" contact. Original load notes:: export all candidates from Breezy (Candidates > tick all > More >
    Export Candidates), then, once per company export:
    `python -m leads csv <file>.csv --source breezy --company "Small Potato Trucking"`
    and then `python -m leads push --limit 300` once a day until "0 still waiting" (a fresh
